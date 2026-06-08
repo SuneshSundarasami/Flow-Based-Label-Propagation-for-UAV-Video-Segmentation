@@ -1,0 +1,34 @@
+# Default configuration for the UAV flow-propagation pipeline.
+# Override on the CLI or by passing a second YAML that is merged on top.
+
+paths:
+  # Root of the Ruralscapes dataset (frames + dense GT masks). Set this once.
+  dataset_root: data/ruralscapes
+  # Which video to process (folder/clip name within the dataset).
+  video: null
+  # SEA-RAFT checkpoint used for optical flow.
+  sea_raft_checkpoint: third_party/SEA-RAFT/checkpoints/Tartan-C-T-TSKH-spring540x960-M.pth
+  # Where run artifacts (tables, figures) are written.
+  output_dir: outputs
+
+flow:
+  # SEA-RAFT model config file (one of the yamls shipped in the submodule).
+  model_cfg: third_party/SEA-RAFT/config/eval/spring-M.json
+  # Number of recurrent refinement iterations at inference.
+  iters: 4
+  device: cuda
+
+propagation:
+  # Half-width of the propagation window: warp keyframe to +/- window frames.
+  window: 30
+  # Spacing between keyframes when scaling to the full video (Phase C).
+  keyframe_interval: 30
+
+occlusion:
+  # Forward-backward consistency threshold (pixels). Pixels whose round-trip
+  # error exceeds this are marked invalid (occluded / unreliable).
+  fb_threshold: 1.5
+
+eval:
+  # Label id to ignore in mIoU (e.g. unlabelled / void). Set per dataset.
+  ignore_index: 255

@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "uav-flowprop"
+version = "0.1.0"
+description = "Flow-based label propagation for UAV video segmentation (SEA-RAFT)"
+requires-python = ">=3.10"
+# Runtime dependencies are provided by the conda environment (environment.yml).
+# This file exists so the package can be installed editable into that env:
+#     pip install -e .
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+uav_flowprop = ["config/*.yaml", "data/*.yaml"]

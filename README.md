@@ -1,0 +1,72 @@
+# Flow-Based Label Propagation for UAV Video Segmentation
+
+DLRV project. Propagates dense segmentation labels from annotated **keyframes** to
+neighbouring frames of a UAV video (Ruralscapes) along **SEA-RAFT** optical flow,
+and characterises how label quality decays with distance from the keyframe.
+
+See [`plan.md`](plan.md) for the full work-package breakdown and
+[`docs/literature_notes.md`](docs/literature_notes.md) for background.
+
+## Status
+
+**Phase A (Foundation) — in progress.** Package scaffold, SEA-RAFT wrapper +
+smoke test, and the Ruralscapes loader are in place. Running the smoke tests
+requires the conda environment (and, for the data check, the dataset).
+
+## Setup (conda)
+
+```bash
+# 1. create and activate the environment
+conda env create -f environment.yml
+conda activate uav-flowprop
+
+# 2. install this package (editable) into the env
+pip install -e .
+
+# 3. pull the SEA-RAFT submodule (if not cloned with --recurse-submodules)
+git submodule update --init --recursive
+```
+
+## Repository layout
+
+```
+src/uav_flowprop/      # the package
+  config/              # default.yaml + loader (deep-merge overrides)
+  flow/                # SEA-RAFT wrapper: estimate_flow(img1, img2)
+  warp/                # mask warping + FB occlusion        (Phase B)
+  eval/                # mIoU / per-class IoU                (Phase B)
+  data/                # Ruralscapes loader + class palette
+  viz/                 # flow color-wheel visualization
+scripts/               # CLI entry points (smoke tests, downloads)
+third_party/SEA-RAFT/  # pinned git submodule (optical flow backbone)
+docs/                  # literature notes, write-ups
+data/                  # dataset goes here (git-ignored)
+outputs/               # run artifacts (git-ignored)
+Proposal/              # the original DLRV proposal (LaTeX + PDF)
+```
+
+## Phase A: verifying the foundation
+
+**SEA-RAFT optical flow (WP A2)** — download a checkpoint and run the smoke test:
+
+```bash
+python scripts/download_checkpoint.py \
+    --repo MemorySlices/Tartan-C-T-TSKH-spring540x960-M
+python scripts/smoke_test_flow.py \
+    --url MemorySlices/Tartan-C-T-TSKH-spring540x960-M --device cuda
+```
+
+The synthetic check should recover a known translation; visualizations land in
+`outputs/smoke/`. (Use `--device cpu` if you have no GPU; it is slow.)
+
+**Ruralscapes loader (WP A3)** — once the dataset is under `data/`:
+
+```bash
+python scripts/inspect_data.py --root data/ruralscapes/<video> \
+    --frame-glob "frames/*.jpg" --mask-glob "masks/*.png" --mask-format color
+```
+
+This prints a class legend and writes a frame|mask preview to
+`outputs/data_check/`. **Verify the class palette** in
+[`src/uav_flowprop/data/palette.yaml`](src/uav_flowprop/data/palette.yaml)
+against the real dataset — the placeholder RGB values are not authoritative.

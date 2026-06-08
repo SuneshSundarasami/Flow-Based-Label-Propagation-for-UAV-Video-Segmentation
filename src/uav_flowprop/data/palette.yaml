@@ -1,0 +1,27 @@
+# Ruralscapes class palette: maps each class id to a name and (for color-coded
+# masks) an RGB triplet. VERIFY these against your copy of the dataset before
+# trusting evaluation numbers -- the exact RGB values and class set are the main
+# unknown flagged in plan.md (WP A3).
+#
+# If your masks are already single-channel indexed PNGs (pixel value == class
+# id), the `rgb` fields are ignored; only `id`/`name` matter.
+#
+# Ruralscapes has 12 semantic classes plus an unlabelled/void id. Fill the rgb
+# values from the dataset's official color map. Placeholder colors below are
+# NOT authoritative.
+
+ignore_index: 255
+
+classes:
+  - { id: 0,  name: residential,  rgb: [255, 0, 0] }
+  - { id: 1,  name: land,         rgb: [255, 255, 0] }
+  - { id: 2,  name: forest,       rgb: [0, 128, 0] }
+  - { id: 3,  name: sky,          rgb: [0, 128, 255] }
+  - { id: 4,  name: fence,        rgb: [128, 64, 0] }
+  - { id: 5,  name: road,         rgb: [128, 128, 128] }
+  - { id: 6,  name: hill,         rgb: [128, 255, 0] }
+  - { id: 7,  name: church,       rgb: [255, 0, 255] }
+  - { id: 8,  name: car,          rgb: [0, 0, 255] }
+  - { id: 9,  name: water,        rgb: [0, 0, 128] }
+  - { id: 10, name: person,       rgb: [255, 128, 0] }
+  - { id: 11, name: haystack,     rgb: [255, 255, 128] }

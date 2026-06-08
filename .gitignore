@@ -1,0 +1,36 @@
+# Conda / Python
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+.env
+*.egg-info/
+
+# Project data & model weights (too large for git)
+data/**
+!data/.gitkeep
+*.ckpt
+*.pth
+*.pt
+checkpoints/
+
+# Outputs / results
+outputs/
+results/
+*.mp4
+*.avi
+
+# LaTeX build artifacts
+Proposal/$work/
+Proposal/*.aux
+Proposal/*.bbl
+Proposal/*.blg
+Proposal/*.fdb_latexmk
+Proposal/*.fls
+Proposal/*.log
+Proposal/*.synctex.gz
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

@@ -1,0 +1,169 @@
+\documentclass[rnd]{mas_proposal}
+% \documentclass[thesis]{mas_proposal}
+
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage{graphicx}
+
+\title{Flow-Based Label Propagation for UAV Video Segmentation}
+\author{Sunesh Praveen Raja Sundarasami}
+\supervisors{Prof. Dr. Sebastian Houben}
+\date{May 2026}
+
+\begin{document}
+
+\maketitle
+
+\pagestyle{plain}
+
+\section{Introduction}
+
+\subsection{Topic of This DLRV project}
+
+Semantic segmentation of UAV video is expensive because every frame requires
+pixel-accurate labels when annotated manually. This project implements a
+flow-based label propagation pipeline for a single UAV video from the
+Ruralscapes dataset using SEA-RAFT~\cite{searaft2024} as the optical flow
+backbone. Keyframe segmentation masks are warped to surrounding frames along
+the estimated flow field and evaluated against dense ground truth using mIoU,
+producing a clear picture of how label quality degrades with increasing
+distance from the keyframe.
+
+\subsection{Relevance of This DLRV project}
+
+In a 30\,fps recording, one minute of video contains 1,800 frames. If the
+current workflow labels one frame per second, that is already 60 manual
+annotations per minute. A working propagation pipeline can extend those labels
+to cover many more frames with acceptable quality, directly reducing annotation
+cost for aerial video applications such as agricultural monitoring and
+infrastructure inspection.
+
+\section{Related Work}
+
+\subsection{Survey of Related Work}
+
+Flow-based label propagation has been studied extensively in the context of
+video segmentation. The most directly related prior work is
+SegProp~\cite{segprop2020}, which propagates sparse keyframe annotations to
+unlabelled aerial video frames using optical flow, demonstrating that highly
+redundant consecutive frames make this approach particularly effective for UAV
+footage. The optical flow estimation in this project relies on
+SEA-RAFT~\cite{searaft2024}, which extends the recurrent architecture of
+RAFT~\cite{raft2020} with a simplified encoder and attention module, yielding
+strong accuracy on standard benchmarks. The classical foundations of
+flow-based warping and the forward-backward consistency check used here for
+occlusion detection are rooted in the variational framework of Brox et
+al.~\cite{brox2004}. Building on propagation as a core primitive, Zhu et
+al.~\cite{zhu2019} propose a warp-and-refine paradigm in which
+flow-propagated labels are subsequently corrected by a lightweight network,
+providing motivation for the error analysis central to this project.
+
+\subsection{Limitation and Deficits in the State of the Art}
+
+Most propagation pipelines assume smooth, near-planar motion. UAV footage
+violates this when the drone changes altitude or flies over scenes with depth
+variation, introducing parallax that standard flow warping cannot fully
+correct~\cite{segprop2020,zhu2019}. Furthermore, propagation quality is rarely
+measured as a function of frame distance, leaving practitioners with little
+guidance on how far from a keyframe the propagated labels remain
+useful~\cite{raft2020,searaft2024}.
+
+\section{Problem Statement}
+
+This project builds a flow-based label propagation pipeline for a single
+densely annotated UAV video and characterises how propagation quality degrades
+with increasing distance from the keyframe. SEA-RAFT~\cite{searaft2024}
+estimates optical flow from each keyframe to surrounding frames, the keyframe
+mask is warped along the flow field using nearest-neighbour interpolation, and
+occluded pixels are detected and excluded via a forward-backward consistency
+check~\cite{brox2004}. The warped masks are evaluated against ground truth
+using mIoU, and scores are plotted as a function of propagation distance to
+directly characterise pipeline reliability.
+
+\section{Project Plan}
+
+\subsection{Work Packages}
+
+\begin{enumerate}
+
+    \item[WP1] \textbf{Literature Study and Setup.} Review the core literature
+    on optical flow and flow-based label propagation, identify key design
+    decisions from SegProp~\cite{segprop2020}, install all dependencies, and
+    confirm that SEA-RAFT produces valid flow on at least one Ruralscapes frame
+    pair.
+
+    \item[WP2] \textbf{Propagation Pipeline.} Implement the end-to-end
+    pipeline: run SEA-RAFT between keyframes and target frames, warp keyframe
+    masks using nearest-neighbour interpolation, exclude occluded pixels via
+    the forward-backward consistency check, and compute mIoU over valid pixels
+    against ground truth. Validate on a short clip by confirming mIoU decreases
+    with increasing frame distance.
+
+    \item[WP3] \textbf{Evaluation, Analysis, and Report.} Scale the pipeline
+    to the full video, record per-pair mIoU within a fixed propagation window,
+    and produce a mIoU-vs-distance decay curve and a difficulty heatmap over
+    the video timeline. Select a small set of failure cases and visualise them
+    alongside ground-truth masks. Write the report continuously throughout the
+    project.
+
+\end{enumerate}
+
+\subsection{Milestones}
+
+\begin{enumerate}
+    \item[M1] Literature reviewed; SEA-RAFT producing valid flow on one
+    Ruralscapes frame pair.
+    \item[M2] End-to-end pipeline validated on a short clip with correct mIoU
+    evaluation.
+    \item[M3] Full-video evaluation complete; heatmap, distance plot, failure
+    cases, and final report submitted.
+\end{enumerate}
+
+\subsection{Deliverables}
+
+\subsubsection*{Minimum Viable}
+\begin{itemize}
+    \item A working propagation pipeline with mIoU evaluation on one
+    Ruralscapes video.
+    \item A mIoU-vs-distance plot and at least two annotated failure-case
+    visualisations.
+\end{itemize}
+
+\subsubsection*{Expected}
+\begin{itemize}
+    \item A difficulty heatmap over the full video with a written
+    interpretation of failure patterns.
+    \item A per-class IoU breakdown identifying which categories propagate
+    most and least reliably.
+\end{itemize}
+
+\subsubsection*{Desired}
+\begin{itemize}
+    \item A clean, documented implementation reusable on other UAV videos.
+    \item Practical guidelines for reliable propagation distance under
+    different motion conditions.
+\end{itemize}
+
+
+
+\section{Potential Extension}
+
+If the core pipeline is completed ahead of schedule, a frame selection model
+may be pursued as an optional extension. SegProp~\cite{segprop2020} selects
+keyframes at fixed intervals, ignoring content. The per-pair mIoU scores from
+WP3 expose which intervals are hardest to propagate, providing a natural
+signal for smarter selection. The extension would build a lightweight model
+that automatically recommends which $k$ frames are most valuable to annotate
+manually, prioritising frames at the boundary of high-difficulty intervals.
+The goal is to show that content-aware keyframe selection yields higher overall
+segmentation quality than the fixed-interval baseline of
+SegProp~\cite{segprop2020} under the same annotation budget.
+
+\nocite{*}
+
+\bibliographystyle{unsrtnat}
+\bibliography{bibliography.bib}
+
+\end{document}
