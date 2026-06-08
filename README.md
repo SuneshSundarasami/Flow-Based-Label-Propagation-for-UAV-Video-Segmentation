@@ -20,17 +20,17 @@ requires the conda environment (and, for the data check, the dataset).
 conda env create -f environment.yml
 conda activate uav-flowprop
 
-# 2. install this package (editable) into the env
-pip install -e .
-
-# 3. pull the SEA-RAFT submodule (if not cloned with --recurse-submodules)
+# 2. pull the SEA-RAFT submodule (if not cloned with --recurse-submodules)
 git submodule update --init --recursive
 ```
+
+The source packages live flat under `src/`; scripts and tests add `src/` to the
+path automatically, so no install step is required.
 
 ## Repository layout
 
 ```
-src/uav_flowprop/      # the package
+src/                   # source packages (flat)
   config/              # default.yaml + loader (deep-merge overrides)
   flow/                # SEA-RAFT wrapper: estimate_flow(img1, img2)
   warp/                # mask warping + FB occlusion        (Phase B)
@@ -38,9 +38,10 @@ src/uav_flowprop/      # the package
   data/                # Ruralscapes loader + class palette
   viz/                 # flow color-wheel visualization
 scripts/               # CLI entry points (smoke tests, downloads)
+tests/                 # pytest (pythonpath=src)
 third_party/SEA-RAFT/  # pinned git submodule (optical flow backbone)
 docs/                  # literature notes, write-ups
-data/                  # dataset goes here (git-ignored)
+data/                  # dataset goes here, OUTSIDE src (git-ignored)
 outputs/               # run artifacts (git-ignored)
 Proposal/              # the original DLRV proposal (LaTeX + PDF)
 ```
@@ -68,5 +69,5 @@ python scripts/inspect_data.py --root data/ruralscapes/<video> \
 
 This prints a class legend and writes a frame|mask preview to
 `outputs/data_check/`. **Verify the class palette** in
-[`src/uav_flowprop/data/palette.yaml`](src/uav_flowprop/data/palette.yaml)
+[`src/data/palette.yaml`](src/data/palette.yaml)
 against the real dataset — the placeholder RGB values are not authoritative.

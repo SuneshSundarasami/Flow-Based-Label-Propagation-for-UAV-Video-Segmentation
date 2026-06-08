@@ -22,7 +22,7 @@ sys.path.insert(0, str(_REPO_ROOT / "src"))
 
 import imageio.v3 as iio  # noqa: E402
 
-from uav_flowprop.data import RuralscapesVideo  # noqa: E402
+from data import RuralscapesVideo  # noqa: E402
 
 
 def _colorize(label: np.ndarray, video: RuralscapesVideo) -> np.ndarray:

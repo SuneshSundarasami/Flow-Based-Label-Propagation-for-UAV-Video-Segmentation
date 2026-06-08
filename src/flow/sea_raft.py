@@ -22,7 +22,8 @@ import torch.nn.functional as F
 # Resolve the submodule and make its ``core`` package importable. SEA-RAFT
 # internally does ``import datasets`` / ``from raft import RAFT`` assuming ``core``
 # is on the path, so we add both the repo root and ``core``.
-_REPO_ROOT = Path(__file__).resolve().parents[3]
+# This file lives at <repo>/src/flow/sea_raft.py -> parents[2] is <repo>.
+_REPO_ROOT = Path(__file__).resolve().parents[2]
 _SEA_RAFT_ROOT = _REPO_ROOT / "third_party" / "SEA-RAFT"
 _SEA_RAFT_CORE = _SEA_RAFT_ROOT / "core"
 

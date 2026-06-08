@@ -26,9 +26,9 @@ sys.path.insert(0, str(_REPO_ROOT / "src"))
 
 import imageio.v3 as iio  # noqa: E402
 
-from uav_flowprop.config import load_config  # noqa: E402
-from uav_flowprop.flow import SeaRaftFlow  # noqa: E402
-from uav_flowprop.viz import flow_to_color  # noqa: E402
+from config import load_config  # noqa: E402
+from flow import SeaRaftFlow  # noqa: E402
+from viz import flow_to_color  # noqa: E402
 
 
 def _make_synthetic_pair(h=160, w=240, shift=(6, 3), seed=0):

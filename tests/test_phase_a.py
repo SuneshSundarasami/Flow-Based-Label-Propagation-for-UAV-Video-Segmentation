@@ -10,9 +10,9 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from uav_flowprop.config import load_config
-from uav_flowprop.viz import flow_to_color
-from uav_flowprop.data.ruralscapes import (
+from config import load_config
+from viz import flow_to_color
+from data.ruralscapes import (
     Palette, color_mask_to_index, load_palette,
 )
 
