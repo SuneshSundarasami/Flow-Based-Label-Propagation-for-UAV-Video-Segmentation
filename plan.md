@@ -79,6 +79,11 @@ check.
   `estimate_flow(img1, img2) -> flow`.
 - *Done when:* flow runs on one synthetic pair and one real frame pair; the flow
   colour-wheel visualisation looks sensible.
+- *Verified:* `model.safetensors` downloaded to `third_party/SEA-RAFT/checkpoints/`;
+  `scripts/smoke_test_flow.py --device cpu --img1 third_party/SEA-RAFT/custom/image1.jpg --img2 third_party/SEA-RAFT/custom/image2.jpg`
+  passed. Synthetic expected `(12, 6)`, recovered median `(11.85, 6.74)`;
+  real-pair flow magnitude min/mean/max `0.00/1.18/35.25`; visualisations written
+  to `outputs/smoke/`.
 
 **A3. Ruralscapes data loader** — *1 d*  **(biggest unknown — needs dataset in hand)**
 - Locate the chosen video + dense GT masks; confirm class list, label encoding,
@@ -182,7 +187,7 @@ budget; show higher overall mIoU.
 | WP | Description | Status |
 |----|-------------|--------|
 | A1 | Environment & repo scaffold | ☑ done; env + imports + tests verified |
-| A2 | SEA-RAFT integration & smoke test | ◐ code done; run pending checkpoint+GPU/real pair |
+| A2 | SEA-RAFT integration & smoke test | ☑ done; CPU smoke verified on synthetic + sample real pair |
 | A3 | Ruralscapes data loader | ◐ code done; run pending dataset |
 | A4 | Literature notes | ☑ done |
 | B1 | Flow-based mask warping | ☐ todo |

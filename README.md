@@ -12,8 +12,9 @@ See [`plan.md`](plan.md) for the full work-package breakdown and
 **Phase A (Foundation) — in progress.** Package scaffold, SEA-RAFT wrapper +
 smoke test, and the Ruralscapes loader are in place. A1 is verified: the
 `uav-flowprop` conda environment builds, local packages import with `src` on the
-Python path, and the Phase A lightweight tests pass. A2 still needs a checkpoint
-and smoke run; A3 still needs the dataset.
+Python path, and the Phase A lightweight tests pass. A2 is verified on CPU with
+a downloaded SEA-RAFT checkpoint, one synthetic pair, and the SEA-RAFT sample
+real pair. A3 still needs the dataset.
 
 ## Setup (conda)
 
@@ -58,17 +59,20 @@ Proposal/              # the original DLRV proposal (LaTeX + PDF)
 
 ## Phase A: verifying the foundation
 
-**SEA-RAFT optical flow (WP A2)** — download a checkpoint and run the smoke test:
+**SEA-RAFT optical flow (WP A2)** — download/cache a checkpoint and run the smoke
+test:
 
 ```bash
 python scripts/download_checkpoint.py \
     --repo MemorySlices/Tartan-C-T-TSKH-spring540x960-M
-python scripts/smoke_test_flow.py \
-    --url MemorySlices/Tartan-C-T-TSKH-spring540x960-M --device cuda
+python scripts/smoke_test_flow.py --device cpu \
+    --img1 third_party/SEA-RAFT/custom/image1.jpg \
+    --img2 third_party/SEA-RAFT/custom/image2.jpg
 ```
 
-The synthetic check should recover a known translation; visualizations land in
-`outputs/smoke/`. (Use `--device cpu` if you have no GPU; it is slow.)
+The verified CPU run recovered synthetic flow median `(11.85, 6.74)` for an
+expected `(12, 6)` shift and wrote `synthetic_flow.png` / `real_flow.png` to
+`outputs/smoke/`. Use `--device cuda` when GPU access is available.
 
 **Ruralscapes loader (WP A3)** — once the dataset is under `data/`:
 

@@ -20,5 +20,6 @@ dependencies:
   - pillow
   - pytest
   - huggingface_hub
+  - safetensors
   - pip:
       - imageio

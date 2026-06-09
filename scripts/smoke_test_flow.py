@@ -31,7 +31,7 @@ from flow import SeaRaftFlow  # noqa: E402
 from viz import flow_to_color  # noqa: E402
 
 
-def _make_synthetic_pair(h=160, w=240, shift=(6, 3), seed=0):
+def _make_synthetic_pair(h=540, w=960, shift=(12, 6), seed=0):
     """Random-texture image + a copy translated by ``shift`` = (dx, dy)."""
     rng = np.random.default_rng(seed)
     base = rng.integers(0, 256, size=(h, w, 3), dtype=np.uint8)

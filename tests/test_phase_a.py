@@ -15,6 +15,7 @@ from viz import flow_to_color
 from data.ruralscapes import (
     Palette, color_mask_to_index, load_palette,
 )
+from flow.sea_raft import _load_model_args
 
 
 def test_config_loads_and_merges():
@@ -30,6 +31,15 @@ def test_flow_to_color_shape_and_dtype():
     img = flow_to_color(flow)
     assert img.shape == (16, 24, 3)
     assert img.dtype == np.uint8
+
+
+def test_sea_raft_config_parser_loads_with_project_config_imported():
+    # Regression check: the project also has a `config` package, so SEA-RAFT's
+    # config/parser.py must be loaded by path instead of `import config.parser`.
+    cfg_path = Path(__file__).resolve().parents[1] / "third_party" / "SEA-RAFT" / "config" / "eval" / "spring-M.json"
+    args = _load_model_args(cfg_path, iters=2)
+    assert args.name == "spring-M"
+    assert args.iters == 2
 
 
 def test_palette_loads():

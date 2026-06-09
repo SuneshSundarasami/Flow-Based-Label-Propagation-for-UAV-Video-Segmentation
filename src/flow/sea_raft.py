@@ -11,6 +11,7 @@ pixel in ``img1`` to its location in ``img2`` (forward flow img1 -> img2).
 from __future__ import annotations
 
 import sys
+import importlib.util
 from argparse import Namespace
 from pathlib import Path
 from typing import Optional
@@ -42,9 +43,14 @@ def _ensure_on_path() -> None:
 
 def _load_model_args(model_cfg: str | Path, iters: int) -> Namespace:
     _ensure_on_path()
-    from config.parser import json_to_args  # type: ignore
+    parser_path = _SEA_RAFT_ROOT / "config" / "parser.py"
+    spec = importlib.util.spec_from_file_location("sea_raft_config_parser", parser_path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"could not load SEA-RAFT parser from {parser_path}")
+    parser = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(parser)
 
-    args = json_to_args(str(model_cfg))
+    args = parser.json_to_args(str(model_cfg))
     args.iters = iters
     # Fields the demo path expects but the json may not set.
     for field, default in (("scale", 0), ("var_min", 0), ("var_max", 10)):
@@ -86,7 +92,13 @@ class SeaRaftFlow:
 
         if checkpoint is not None:
             model = RAFT(self.args)
-            load_ckpt(model, str(checkpoint))
+            checkpoint = Path(checkpoint)
+            if checkpoint.suffix == ".safetensors":
+                from safetensors.torch import load_file
+
+                model.load_state_dict(load_file(str(checkpoint)), strict=False)
+            else:
+                load_ckpt(model, str(checkpoint))
         else:
             model = RAFT.from_pretrained(url, args=self.args)
 
