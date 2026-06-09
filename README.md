@@ -10,8 +10,10 @@ See [`plan.md`](plan.md) for the full work-package breakdown and
 ## Status
 
 **Phase A (Foundation) — in progress.** Package scaffold, SEA-RAFT wrapper +
-smoke test, and the Ruralscapes loader are in place. Running the smoke tests
-requires the conda environment (and, for the data check, the dataset).
+smoke test, and the Ruralscapes loader are in place. A1 is verified: the
+`uav-flowprop` conda environment builds, local packages import with `src` on the
+Python path, and the Phase A lightweight tests pass. A2 still needs a checkpoint
+and smoke run; A3 still needs the dataset.
 
 ## Setup (conda)
 
@@ -26,6 +28,14 @@ git submodule update --init --recursive
 
 The source packages live flat under `src/`; scripts and tests add `src/` to the
 path automatically, so no install step is required.
+
+Verify the A1 scaffold:
+
+```bash
+PYTHONPATH=src conda run -n uav-flowprop python -c \
+    "import config, data, flow, viz, warp, eval; print('imports ok')"
+conda run -n uav-flowprop pytest -q
+```
 
 ## Repository layout
 

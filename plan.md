@@ -70,6 +70,9 @@ check.
   `config/`), README.
 - *Done when:* `conda env create -f environment.yml` succeeds in a clean shell and
   the package imports.
+- *Verified:* `uav-flowprop` environment created successfully; package imports
+  pass with `PYTHONPATH=src`; `conda run -n uav-flowprop pytest -q` reports
+  `5 passed`.
 
 **A2. SEA-RAFT integration & smoke test** — *1 d*
 - Add SEA-RAFT, download a pretrained checkpoint, wrap inference in
@@ -178,8 +181,8 @@ budget; show higher overall mIoU.
 
 | WP | Description | Status |
 |----|-------------|--------|
-| A1 | Environment & repo scaffold | ☑ done |
-| A2 | SEA-RAFT integration & smoke test | ◐ code done; run pending env+GPU |
+| A1 | Environment & repo scaffold | ☑ done; env + imports + tests verified |
+| A2 | SEA-RAFT integration & smoke test | ◐ code done; run pending checkpoint+GPU/real pair |
 | A3 | Ruralscapes data loader | ◐ code done; run pending dataset |
 | A4 | Literature notes | ☑ done |
 | B1 | Flow-based mask warping | ☐ todo |
