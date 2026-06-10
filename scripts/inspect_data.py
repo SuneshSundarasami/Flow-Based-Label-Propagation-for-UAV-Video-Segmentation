@@ -45,15 +45,29 @@ def main() -> int:
         root=args.root, frame_glob=args.frame_glob, mask_glob=args.mask_glob,
         mask_format=args.mask_format, palette_path=args.palette)
     print("[data]", video.summary())
+    print(f"[data] frame index range: {video.frame_indices[0]}..{video.frame_indices[-1]}")
 
     if not video.annotated_indices:
         print("[data] no annotated frames matched -- check the mask glob.")
         return 1
 
+    print(f"[data] annotated frames: {len(video.annotated_indices)}")
+    if len(video.annotated_indices) > 1:
+        spacing = np.diff(video.annotated_indices)
+        print(f"[data] annotation spacing min/median/max = "
+              f"{spacing.min()}/{np.median(spacing):.1f}/{spacing.max()}")
+    else:
+        print("[data] annotation spacing: single annotated frame")
+
     idx = video.annotated_indices[0]
     frame = video.load_frame(idx)
     mask = video.load_mask(idx)
+    if frame.shape[:2] != mask.shape:
+        raise ValueError(f"frame/mask shape mismatch: {frame.shape} vs {mask.shape}")
     print(f"[data] sample frame {idx}: image {frame.shape}, mask {mask.shape}")
+    unique = np.unique(mask)
+    print(f"[data] mask encoding: {args.mask_format}; unique ids: "
+          f"{unique[:20].tolist()}{' ...' if len(unique) > 20 else ''}")
     print("[data] class legend (id: name -> pixels):")
     for cid in video.palette.ids:
         n = int((mask == cid).sum())

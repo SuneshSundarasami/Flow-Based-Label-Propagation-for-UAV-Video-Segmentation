@@ -1,0 +1,6 @@
+ignore_index: 255
+
+classes:
+  - { id: 0, name: residential, rgb: [255, 0, 0] }
+  - { id: 1, name: land,        rgb: [0, 255, 0] }
+  - { id: 2, name: road,        rgb: [0, 0, 255] }

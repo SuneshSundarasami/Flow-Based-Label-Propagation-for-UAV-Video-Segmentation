@@ -13,7 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from config import load_config
 from viz import flow_to_color
 from data.ruralscapes import (
-    Palette, color_mask_to_index, load_palette,
+    Palette, RuralscapesVideo, color_mask_to_index, load_palette,
 )
 from flow.sea_raft import _load_model_args
 
@@ -36,7 +36,14 @@ def test_flow_to_color_shape_and_dtype():
 def test_sea_raft_config_parser_loads_with_project_config_imported():
     # Regression check: the project also has a `config` package, so SEA-RAFT's
     # config/parser.py must be loaded by path instead of `import config.parser`.
-    cfg_path = Path(__file__).resolve().parents[1] / "third_party" / "SEA-RAFT" / "config" / "eval" / "spring-M.json"
+    cfg_path = (
+        Path(__file__).resolve().parents[1]
+        / "third_party"
+        / "SEA-RAFT"
+        / "config"
+        / "eval"
+        / "spring-M.json"
+    )
     args = _load_model_args(cfg_path, iters=2)
     assert args.name == "spring-M"
     assert args.iters == 2
@@ -68,3 +75,24 @@ def test_color_mask_unknown_color_is_ignored():
     rgb = np.full((2, 2, 3), 7, dtype=np.uint8)  # matches nothing exactly
     idx = color_mask_to_index(rgb, pal, tol=0)
     assert (idx == 255).all()
+
+
+def test_ruralscapes_fixture_loads_frame_mask_and_pair():
+    root = Path(__file__).resolve().parent / "fixtures" / "ruralscapes_demo"
+    video = RuralscapesVideo(
+        root=root,
+        frame_glob="frames/*.ppm",
+        mask_glob="masks/*.ppm",
+        mask_format="color",
+        palette_path=root / "palette.yaml",
+    )
+    assert len(video) == 2
+    assert video.annotated_indices == [1]
+    frame = video.load_frame(1)
+    mask = video.load_mask(1)
+    assert frame.shape == (4, 4, 3)
+    assert mask.shape == (4, 4)
+    assert set(np.unique(mask).tolist()) == {0, 1, 2}
+    pair = video.get_pair(1, 2)
+    assert pair.distance == 1
+    assert pair.target_mask is None

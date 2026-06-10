@@ -14,7 +14,8 @@ smoke test, and the Ruralscapes loader are in place. A1 is verified: the
 `uav-flowprop` conda environment builds, local packages import with `src` on the
 Python path, and the Phase A lightweight tests pass. A2 is verified on CPU with
 a downloaded SEA-RAFT checkpoint, one synthetic pair, and the SEA-RAFT sample
-real pair. A3 still needs the dataset.
+real pair. A3's loader/inspection path is fixture-verified; final real-data
+verification still needs the Ruralscapes dataset.
 
 ## Setup (conda)
 
@@ -81,7 +82,17 @@ python scripts/inspect_data.py --root data/ruralscapes/<video> \
     --frame-glob "frames/*.jpg" --mask-glob "masks/*.png" --mask-format color
 ```
 
-This prints a class legend and writes a frame|mask preview to
-`outputs/data_check/`. **Verify the class palette** in
+This prints the frame range, annotation count/spacing, mask encoding/unique ids,
+a class legend, and writes a frame|mask preview to `outputs/data_check/`.
+The loader/inspection path can be checked without the full dataset using the
+committed fixture:
+
+```bash
+python scripts/inspect_data.py --root tests/fixtures/ruralscapes_demo \
+    --frame-glob "frames/*.ppm" --mask-glob "masks/*.ppm" \
+    --mask-format color --palette tests/fixtures/ruralscapes_demo/palette.yaml
+```
+
+**Verify the class palette** in
 [`src/data/palette.yaml`](src/data/palette.yaml)
 against the real dataset — the placeholder RGB values are not authoritative.

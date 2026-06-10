@@ -89,6 +89,10 @@ check.
 - Locate the chosen video + dense GT masks; confirm class list, label encoding,
   annotation density; loader returning `(frame, mask, frame_index)`.
 - *Done when:* any frame/mask pair loads and a class-colour legend prints.
+- *Verified so far:* loader and `scripts/inspect_data.py` pass on
+  `tests/fixtures/ruralscapes_demo`, printing frame range, annotation count,
+  mask encoding/unique ids, and class legend. Real Ruralscapes verification is
+  still pending because no dataset is present under `data/`.
 
 **A4. Literature notes** — *0.5 d (parallel)*
 - One-page summary of SegProp, SEA-RAFT, Brox FB-consistency, Zhu warp-and-refine
@@ -188,7 +192,7 @@ budget; show higher overall mIoU.
 |----|-------------|--------|
 | A1 | Environment & repo scaffold | ☑ done; env + imports + tests verified |
 | A2 | SEA-RAFT integration & smoke test | ☑ done; CPU smoke verified on synthetic + sample real pair |
-| A3 | Ruralscapes data loader | ◐ code done; run pending dataset |
+| A3 | Ruralscapes data loader | ◐ fixture verified; real dataset pending |
 | A4 | Literature notes | ☑ done |
 | B1 | Flow-based mask warping | ☐ todo |
 | B2 | Forward–backward occlusion mask | ☐ todo |
