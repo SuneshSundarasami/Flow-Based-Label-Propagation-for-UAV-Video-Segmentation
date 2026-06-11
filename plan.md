@@ -93,6 +93,10 @@ check.
   `tests/fixtures/ruralscapes_demo`, printing frame range, annotation count,
   mask encoding/unique ids, and class legend. Real Ruralscapes verification is
   still pending because no dataset is present under `data/`.
+- *Real-data verified:* extracted `data/Ruralscapes.zip`, exported the labelled
+  frames for `DJI_0043`, and ran `scripts/inspect_data.py` on 142 matched
+  frame/mask pairs. Sample frame/mask shape: `(2160, 4096, 3)` / `(2160, 4096)`;
+  median annotation spacing is 50 frames and the class legend prints.
 
 **A4. Literature notes** — *0.5 d (parallel)*
 - One-page summary of SegProp, SEA-RAFT, Brox FB-consistency, Zhu warp-and-refine
@@ -192,7 +196,7 @@ budget; show higher overall mIoU.
 |----|-------------|--------|
 | A1 | Environment & repo scaffold | ☑ done; env + imports + tests verified |
 | A2 | SEA-RAFT integration & smoke test | ☑ done; CPU smoke verified on synthetic + sample real pair |
-| A3 | Ruralscapes data loader | ◐ fixture verified; real dataset pending |
+| A3 | Ruralscapes data loader | ☑ done; real DJI_0043 data verified |
 | A4 | Literature notes | ☑ done |
 | B1 | Flow-based mask warping | ☐ todo |
 | B2 | Forward–backward occlusion mask | ☐ todo |

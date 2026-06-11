@@ -3,9 +3,9 @@
 
 paths:
   # Root of the Ruralscapes dataset (frames + dense GT masks). Set this once.
-  dataset_root: data/ruralscapes
+  dataset_root: data/Ruralscapes
   # Which video to process (folder/clip name within the dataset).
-  video: null
+  video: DJI_0043
   # SEA-RAFT checkpoint used for optical flow.
   sea_raft_checkpoint: third_party/SEA-RAFT/checkpoints/model.safetensors
   # Where run artifacts (tables, figures) are written.

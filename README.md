@@ -14,8 +14,7 @@ smoke test, and the Ruralscapes loader are in place. A1 is verified: the
 `uav-flowprop` conda environment builds, local packages import with `src` on the
 Python path, and the Phase A lightweight tests pass. A2 is verified on CPU with
 a downloaded SEA-RAFT checkpoint, one synthetic pair, and the SEA-RAFT sample
-real pair. A3's loader/inspection path is fixture-verified; final real-data
-verification still needs the Ruralscapes dataset.
+real pair. A3 is verified on the real Ruralscapes `DJI_0043` video/labels.
 
 ## Setup (conda)
 
@@ -69,6 +68,14 @@ labels under `Ruralscapes/labels/manual_labels/<video>/segfull_*.png`. For A3,
 extract the archive and export frames from the selected MP4 so the loader can
 match frame indices against the labelled masks.
 
+```bash
+unzip data/Ruralscapes.zip -d data
+python scripts/export_labelled_frames.py \
+    --video data/Ruralscapes/videos/DJI_0043.MP4 \
+    --labels data/Ruralscapes/labels/manual_labels/DJI_0043 \
+    --out data/Ruralscapes/frames/DJI_0043
+```
+
 ## Phase A: verifying the foundation
 
 **SEA-RAFT optical flow (WP A2)** — download/cache a checkpoint and run the smoke
@@ -86,15 +93,19 @@ The verified CPU run recovered synthetic flow median `(11.85, 6.74)` for an
 expected `(12, 6)` shift and wrote `synthetic_flow.png` / `real_flow.png` to
 `outputs/smoke/`. Use `--device cuda` when GPU access is available.
 
-**Ruralscapes loader (WP A3)** — once the dataset is under `data/`:
+**Ruralscapes loader (WP A3)** — verified on `DJI_0043`:
 
 ```bash
-python scripts/inspect_data.py --root data/ruralscapes/<video> \
-    --frame-glob "frames/*.jpg" --mask-glob "masks/*.png" --mask-format color
+python scripts/inspect_data.py --root data/Ruralscapes \
+    --frame-glob "frames/DJI_0043/*.jpg" \
+    --mask-glob "labels/manual_labels/DJI_0043/*.png" \
+    --mask-format color
 ```
 
 This prints the frame range, annotation count/spacing, mask encoding/unique ids,
 a class legend, and writes a frame|mask preview to `outputs/data_check/`.
+The verified `DJI_0043` run loaded 142 matched frame/mask pairs with median
+annotation spacing of 50 frames.
 The loader/inspection path can be checked without the full dataset using the
 committed fixture:
 
@@ -104,6 +115,6 @@ python scripts/inspect_data.py --root tests/fixtures/ruralscapes_demo \
     --mask-format color --palette tests/fixtures/ruralscapes_demo/palette.yaml
 ```
 
-**Verify the class palette** in
-[`src/data/palette.yaml`](src/data/palette.yaml)
-against the real dataset — the placeholder RGB values are not authoritative.
+The RGB palette in [`src/data/palette.yaml`](src/data/palette.yaml) follows
+`CLASS_COLORS_RGB` from the official SegProp preprocessing script; class-name
+ordering should still be treated carefully before reporting per-class results.

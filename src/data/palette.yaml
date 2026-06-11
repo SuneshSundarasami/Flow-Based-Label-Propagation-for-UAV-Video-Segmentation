@@ -1,7 +1,8 @@
-# Ruralscapes class palette: maps each class id to a name and (for color-coded
-# masks) an RGB triplet. VERIFY these against your copy of the dataset before
-# trusting evaluation numbers -- the exact RGB values and class set are the main
-# unknown flagged in plan.md (WP A3).
+# Ruralscapes class palette: maps each class id to a name and RGB triplet.
+# RGB values follow CLASS_COLORS_RGB from the official SegProp preprocessing
+# script (vlicaret/segprop, ruralscapes_preprocess.py). Class names are kept in
+# the project order and should still be cross-checked against the paper figure
+# before reporting per-class results.
 #
 # If your masks are already single-channel indexed PNGs (pixel value == class
 # id), the `rgb` fields are ignored; only `id`/`name` matter.
@@ -13,15 +14,15 @@
 ignore_index: 255
 
 classes:
-  - { id: 0,  name: residential,  rgb: [255, 0, 0] }
-  - { id: 1,  name: land,         rgb: [255, 255, 0] }
-  - { id: 2,  name: forest,       rgb: [0, 128, 0] }
-  - { id: 3,  name: sky,          rgb: [0, 128, 255] }
-  - { id: 4,  name: fence,        rgb: [128, 64, 0] }
-  - { id: 5,  name: road,         rgb: [128, 128, 128] }
-  - { id: 6,  name: hill,         rgb: [128, 255, 0] }
-  - { id: 7,  name: church,       rgb: [255, 0, 255] }
-  - { id: 8,  name: car,          rgb: [0, 0, 255] }
-  - { id: 9,  name: water,        rgb: [0, 0, 128] }
-  - { id: 10, name: person,       rgb: [255, 128, 0] }
-  - { id: 11, name: haystack,     rgb: [255, 255, 128] }
+  - { id: 0,  name: residential,  rgb: [0, 255, 0] }
+  - { id: 1,  name: land,         rgb: [0, 127, 0] }
+  - { id: 2,  name: forest,       rgb: [255, 255, 0] }
+  - { id: 3,  name: sky,          rgb: [255, 127, 0] }
+  - { id: 4,  name: fence,        rgb: [255, 255, 255] }
+  - { id: 5,  name: road,         rgb: [255, 0, 255] }
+  - { id: 6,  name: hill,         rgb: [127, 127, 127] }
+  - { id: 7,  name: church,       rgb: [0, 0, 255] }
+  - { id: 8,  name: car,          rgb: [0, 255, 255] }
+  - { id: 9,  name: water,        rgb: [127, 127, 63] }
+  - { id: 10, name: person,       rgb: [255, 0, 0] }
+  - { id: 11, name: haystack,     rgb: [127, 127, 0] }
