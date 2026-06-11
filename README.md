@@ -58,6 +58,17 @@ outputs/               # run artifacts (git-ignored)
 Proposal/              # the original DLRV proposal (LaTeX + PDF)
 ```
 
+## Dataset
+
+Ruralscapes was downloaded from the official project page:
+<https://sites.google.com/site/aerialimageunderstanding/semantics-through-time-semi-supervised-segmentation-of-aerial-videos>.
+
+The local archive is expected at `data/Ruralscapes.zip` and is intentionally not
+tracked by git. The archive contains `Ruralscapes/videos/*.MP4` and dense manual
+labels under `Ruralscapes/labels/manual_labels/<video>/segfull_*.png`. For A3,
+extract the archive and export frames from the selected MP4 so the loader can
+match frame indices against the labelled masks.
+
 ## Phase A: verifying the foundation
 
 **SEA-RAFT optical flow (WP A2)** — download/cache a checkpoint and run the smoke
