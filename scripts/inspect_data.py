@@ -39,6 +39,8 @@ def main() -> int:
     ap.add_argument("--mask-glob", default="masks/*.png")
     ap.add_argument("--mask-format", default="color", choices=["color", "indexed"])
     ap.add_argument("--palette", default=None)
+    ap.add_argument("--n-samples", type=int, default=1,
+                    help="number of annotated frames to save as overlays")
     args = ap.parse_args()
 
     video = RuralscapesVideo(
@@ -77,9 +79,13 @@ def main() -> int:
 
     out_dir = _REPO_ROOT / "outputs" / "data_check"
     out_dir.mkdir(parents=True, exist_ok=True)
-    preview = np.concatenate([frame, _colorize(mask, video)], axis=1)
-    iio.imwrite(out_dir / f"frame_{idx}_overlay.png", preview)
-    print(f"[data] wrote {out_dir / f'frame_{idx}_overlay.png'}")
+    sample_indices = video.annotated_indices[:args.n_samples]
+    for sidx in sample_indices:
+        sframe = video.load_frame(sidx)
+        smask = video.load_mask(sidx)
+        preview = np.concatenate([sframe, _colorize(smask, video)], axis=1)
+        iio.imwrite(out_dir / f"frame_{sidx}_overlay.png", preview)
+        print(f"[data] wrote {out_dir / f'frame_{sidx}_overlay.png'}")
     return 0
 
 

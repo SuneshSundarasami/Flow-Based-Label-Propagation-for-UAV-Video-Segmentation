@@ -89,9 +89,20 @@ python scripts/smoke_test_flow.py --device cpu \
     --img2 third_party/SEA-RAFT/custom/image2.jpg
 ```
 
-The verified CPU run recovered synthetic flow median `(11.85, 6.74)` for an
-expected `(12, 6)` shift and wrote `synthetic_flow.png` / `real_flow.png` to
-`outputs/smoke/`. Use `--device cuda` when GPU access is available.
+The smoke test runs two checks and writes results to `outputs/smoke/`:
+
+- **Synthetic pair** — a red/blue checkerboard rotated by 5°, giving a
+  spatially-varying flow field (different direction and magnitude at every
+  pixel). Outputs: `synthetic_img1.png`, `synthetic_img2.png`,
+  `synthetic_flow.png` (colour-wheel + sparse arrow overlay).
+- **Real pair** — the two sample frames shipped with SEA-RAFT (`custom/`),
+  which appear to be from the Spring benchmark. Outputs: `real_img1.png`,
+  `real_img2.png`, `real_flow.png` (colour-wheel + sparse arrow overlay).
+
+The colour-wheel images are annotated with `draw_flow_arrows` from
+`src/viz/flow_viz.py`, which overlays a sparse grid of arrows (one per 60 px)
+so direction is readable at a glance. Use `--device cuda` when GPU access is
+available.
 
 **Ruralscapes loader (WP A3)** — verified on `DJI_0043`:
 
@@ -103,9 +114,10 @@ python scripts/inspect_data.py --root data/Ruralscapes \
 ```
 
 This prints the frame range, annotation count/spacing, mask encoding/unique ids,
-a class legend, and writes a frame|mask preview to `outputs/data_check/`.
-The verified `DJI_0043` run loaded 142 matched frame/mask pairs with median
-annotation spacing of 50 frames.
+a class legend, and writes frame|mask side-by-side previews to
+`outputs/data_check/`. Pass `--n-samples N` to save overlays for the first N
+annotated frames (default 1). The verified `DJI_0043` run loaded 142 matched
+frame/mask pairs with median annotation spacing of 50 frames.
 The loader/inspection path can be checked without the full dataset using the
 committed fixture:
 

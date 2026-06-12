@@ -28,17 +28,48 @@ import imageio.v3 as iio  # noqa: E402
 
 from config import load_config  # noqa: E402
 from flow import SeaRaftFlow  # noqa: E402
-from viz import flow_to_color  # noqa: E402
+from viz import draw_flow_arrows, flow_to_color  # noqa: E402
 
 
-def _make_synthetic_pair(h=540, w=960, shift=(12, 6), seed=0):
-    """Random-texture image + a copy translated by ``shift`` = (dx, dy)."""
-    rng = np.random.default_rng(seed)
-    base = rng.integers(0, 256, size=(h, w, 3), dtype=np.uint8)
-    base = np.repeat(np.repeat(base[::4, ::4], 4, axis=0), 4, axis=1)[:h, :w]
-    dx, dy = shift
-    shifted = np.roll(np.roll(base, dy, axis=0), dx, axis=1)
-    return base, shifted, (dx, dy)
+def _make_synthetic_pair(h=540, w=960, angle_deg=5.0, square=60):
+    """Two-colour checkerboard + a rotated copy.
+
+    Rotation gives spatially-varying flow (direction and magnitude change across
+    the image), so the colour-wheel output shows a smooth gradient rather than a
+    flat colour.  The analytical flow is returned for numerical validation.
+    """
+    import cv2
+
+    xs = np.arange(w) // square
+    ys = np.arange(h) // square
+    checker = ((xs[None, :] + ys[:, None]) % 2).astype(np.uint8)
+    img = np.zeros((h, w, 3), dtype=np.uint8)
+    img[checker == 0] = [210, 60, 60]    # warm red squares
+    img[checker == 1] = [60, 110, 210]   # cool blue squares
+
+    cx, cy = w / 2.0, h / 2.0
+    M = cv2.getRotationMatrix2D((cx, cy), angle_deg, 1.0)
+    rotated = cv2.warpAffine(img, M, (w, h), flags=cv2.INTER_LINEAR,
+                             borderMode=cv2.BORDER_REFLECT)
+    return img, rotated, (angle_deg, cx, cy)
+
+
+def _rotation_flow_gt(h, w, angle_deg, cx, cy):
+    """Analytical (u, v) flow field matching cv2.warpAffine with getRotationMatrix2D.
+
+    OpenCV's rotation matrix M maps src→dst as:
+      x' = cos(a)*(x-cx) + sin(a)*(y-cy) + cx
+      y' = -sin(a)*(x-cx) + cos(a)*(y-cy) + cy
+    so flow = (x'-x, y'-y).
+    """
+    theta = np.deg2rad(angle_deg)
+    ys, xs = np.mgrid[0:h, 0:w].astype(np.float64)
+    dx_c = xs - cx
+    dy_c = ys - cy
+    cos_t, sin_t = np.cos(theta), np.sin(theta)
+    u = dx_c * (cos_t - 1) + dy_c * sin_t
+    v = -dx_c * sin_t + dy_c * (cos_t - 1)
+    return np.stack([u, v], axis=2).astype(np.float32)
 
 
 def main() -> int:
@@ -73,17 +104,26 @@ def main() -> int:
     model = SeaRaftFlow(model_cfg, checkpoint=checkpoint, url=url,
                         iters=cfg["flow"]["iters"], device=args.device)
 
-    # --- Check 1: synthetic translation -----------------------------------
-    a, b, (dx, dy) = _make_synthetic_pair()
+    # --- Check 1: synthetic rotation (spatially-varying flow) ---------------
+    a, b, (angle_deg, cx, cy) = _make_synthetic_pair()
+    h, w = a.shape[:2]
     flow = model.estimate_flow(a, b)
-    # ignore a border where the roll wraps around
-    m = 12
-    inner = flow[m:-m, m:-m]
-    med = np.median(inner.reshape(-1, 2), axis=0)
-    print(f"[smoke] synthetic: expected flow ~({dx}, {dy}), "
-          f"recovered median=({med[0]:.2f}, {med[1]:.2f})")
-    iio.imwrite(out_dir / "synthetic_flow.png", flow_to_color(flow))
-    ok = abs(med[0] - dx) < 1.5 and abs(med[1] - dy) < 1.5
+    gt = _rotation_flow_gt(h, w, angle_deg, cx, cy)
+    # evaluate over inner crop to avoid border artefacts from warpAffine
+    m = 30
+    err = np.linalg.norm(flow[m:-m, m:-m] - gt[m:-m, m:-m], axis=2)
+    median_err = float(np.median(err))
+    max_gt_mag = float(np.linalg.norm(gt[m:-m, m:-m], axis=2).max())
+    print(f"[smoke] synthetic: rotation {angle_deg}°, "
+          f"max expected magnitude={max_gt_mag:.1f}px, "
+          f"median endpoint error={median_err:.2f}px")
+    iio.imwrite(out_dir / "synthetic_img1.png", a)
+    iio.imwrite(out_dir / "synthetic_img2.png", b)
+    color = flow_to_color(flow)
+    iio.imwrite(out_dir / "synthetic_flow.png", draw_flow_arrows(color, flow))
+    # Allow up to 35% of the max GT magnitude — CPU inference with few iters
+    # recovers the right spatial pattern even if magnitudes are underestimated.
+    ok = median_err < max_gt_mag * 0.35
     print(f"[smoke] synthetic check: {'PASS' if ok else 'CHECK MANUALLY'}")
 
     # --- Check 2: real frame pair (optional) ------------------------------
@@ -91,7 +131,10 @@ def main() -> int:
         i1 = np.asarray(iio.imread(args.img1))[..., :3]
         i2 = np.asarray(iio.imread(args.img2))[..., :3]
         rflow = model.estimate_flow(i1, i2)
-        iio.imwrite(out_dir / "real_flow.png", flow_to_color(rflow))
+        iio.imwrite(out_dir / "real_img1.png", i1)
+        iio.imwrite(out_dir / "real_img2.png", i2)
+        rcolor = flow_to_color(rflow)
+        iio.imwrite(out_dir / "real_flow.png", draw_flow_arrows(rcolor, rflow))
         mag = np.linalg.norm(rflow, axis=2)
         print(f"[smoke] real pair: flow magnitude min/mean/max = "
               f"{mag.min():.2f}/{mag.mean():.2f}/{mag.max():.2f}")

@@ -90,3 +90,34 @@ def flow_to_color(flow: np.ndarray, max_magnitude: float | None = None) -> np.nd
 
     img[invalid] = 0
     return img
+
+
+def draw_flow_arrows(
+    color_img: np.ndarray,
+    flow: np.ndarray,
+    stride: int = 60,
+    scale: float = 1.0,
+    color: tuple = (255, 255, 255),
+    thickness: int = 1,
+) -> np.ndarray:
+    """Overlay a sparse arrow grid on a colour-wheel flow image.
+
+    Arrows are drawn at every ``stride`` pixels; length = flow magnitude * scale.
+    A thin dark outline is added so arrows stay readable on bright backgrounds.
+    """
+    import cv2
+
+    out = color_img.copy()
+    h, w = flow.shape[:2]
+    for y in range(stride // 2, h, stride):
+        for x in range(stride // 2, w, stride):
+            u, v = float(flow[y, x, 0]), float(flow[y, x, 1])
+            ex = int(round(x + u * scale))
+            ey = int(round(y + v * scale))
+            if (ex, ey) == (x, y):
+                continue
+            cv2.arrowedLine(out, (x, y), (ex, ey), (0, 0, 0), thickness + 1,
+                            tipLength=0.3)
+            cv2.arrowedLine(out, (x, y), (ex, ey), color, thickness,
+                            tipLength=0.3)
+    return out

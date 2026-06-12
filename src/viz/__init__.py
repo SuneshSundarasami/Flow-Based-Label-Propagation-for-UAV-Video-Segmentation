@@ -1,4 +1,4 @@
 """Visualization helpers."""
-from .flow_viz import flow_to_color
+from .flow_viz import draw_flow_arrows, flow_to_color
 
-__all__ = ["flow_to_color"]
+__all__ = ["draw_flow_arrows", "flow_to_color"]
