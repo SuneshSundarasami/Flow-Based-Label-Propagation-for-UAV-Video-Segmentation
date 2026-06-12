@@ -13,9 +13,11 @@ paths:
 
 flow:
   # SEA-RAFT model config file (one of the yamls shipped in the submodule).
-  model_cfg: third_party/SEA-RAFT/config/eval/spring-M.json
+  # spring-L uses the same checkpoint as spring-M but runs 12 refinement
+  # iterations instead of 4, giving better accuracy on GPU.
+  model_cfg: third_party/SEA-RAFT/config/eval/spring-L.json
   # Number of recurrent refinement iterations at inference.
-  iters: 4
+  iters: 12
   device: cuda
 
 propagation:
