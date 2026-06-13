@@ -1,5 +1,4 @@
-"""Flow-based mask warping and occlusion handling.
+"""Flow-based mask warping and occlusion handling (Phase B)."""
+from .mask_warp import warp_mask
 
-Implemented in Phase B (WP B1 warping, WP B2 forward-backward occlusion).
-This package is intentionally empty for now so the namespace exists.
-"""
+__all__ = ["warp_mask"]
