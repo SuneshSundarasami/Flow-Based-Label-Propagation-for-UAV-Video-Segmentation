@@ -35,7 +35,7 @@ import imageio.v3 as iio  # noqa: E402
 from config import load_config  # noqa: E402
 from data import RuralscapesVideo  # noqa: E402
 from flow import SeaRaftFlow  # noqa: E402
-from warp import warp_mask  # noqa: E402
+from warp import warp_mask, compute_fb_mask  # noqa: E402
 
 _VIZ_W, _VIZ_H = 960, 540  # resize target for flow + display
 
@@ -106,29 +106,41 @@ def main() -> int:
         tgt_frame_full = video.load_frame(t_idx)
         tgt_frame = _resize(tgt_frame_full, _VIZ_W, _VIZ_H)
 
-        # backward flow: target → keyframe
-        flow = model.estimate_flow(tgt_frame, kf_frame)
-        warped = warp_mask(kf_mask, flow)
+        # backward flow t→k and forward flow k→t for FB check
+        flow_bwd = model.estimate_flow(tgt_frame, kf_frame)
+        flow_fwd = model.estimate_flow(kf_frame, tgt_frame)
+
+        warped = warp_mask(kf_mask, flow_bwd)
+
+        fb_threshold = load_config()["occlusion"]["fb_threshold"]
+        valid = compute_fb_mask(flow_fwd, flow_bwd, threshold=fb_threshold)
+        valid_pct = 100.0 * valid.mean()
 
         tgt_mask_full = video.load_mask(t_idx)
         tgt_gt = _resize(tgt_mask_full, _VIZ_W, _VIZ_H, interp=cv2.INTER_NEAREST)
+
+        # validity panel: white=valid, red=occluded
+        validity_vis = tgt_frame.copy()
+        validity_vis[~valid] = [180, 30, 30]
 
         panel_kf = _overlay(kf_frame, _colorize(kf_mask, video))
         panel_warp = _overlay(tgt_frame, _colorize(warped, video))
         panel_gt = _overlay(tgt_frame, _colorize(tgt_gt, video))
 
-        # label panels
-        for panel, label in zip(
-            [panel_kf, panel_warp, panel_gt],
-            [f"keyframe {kf_idx} (GT)", f"target {t_idx} (warped, +{dist}f)",
-             f"target {t_idx} (GT)"],
-        ):
+        labels = [
+            f"keyframe {kf_idx} (GT)",
+            f"target {t_idx} (warped, +{dist}f)",
+            f"target {t_idx} (GT)",
+            f"validity mask ({valid_pct:.1f}% valid)",
+        ]
+        for panel, label in zip([panel_kf, panel_warp, panel_gt, validity_vis], labels):
             cv2.putText(panel, label, (10, 25), cv2.FONT_HERSHEY_SIMPLEX,
                         0.7, (0, 0, 0), 3, cv2.LINE_AA)
             cv2.putText(panel, label, (10, 25), cv2.FONT_HERSHEY_SIMPLEX,
                         0.7, (255, 255, 255), 1, cv2.LINE_AA)
 
-        out = np.concatenate([panel_kf, panel_warp, panel_gt], axis=1)
+        print(f"[warp] +{dist}f: {valid_pct:.1f}% pixels valid (FB threshold={fb_threshold}px)")
+        out = np.concatenate([panel_kf, panel_warp, panel_gt, validity_vis], axis=1)
         path = out_dir / f"warp_kf{kf_idx}_to_{t_idx}.png"
         iio.imwrite(path, out)
         print(f"[warp] wrote {path}")

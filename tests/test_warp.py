@@ -1,4 +1,4 @@
-"""B1 unit tests for flow-based mask warping."""
+"""B1/B2 unit tests for flow-based mask warping and occlusion detection."""
 import sys
 from pathlib import Path
 
@@ -7,7 +7,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from warp import warp_mask
+from warp import warp_mask, compute_fb_mask
 
 
 def test_zero_flow_is_identity():
@@ -57,3 +57,55 @@ def test_output_dtype_matches_input():
         flow = np.zeros((2, 3, 2), dtype=np.float32)
         out = warp_mask(mask, flow)
         assert out.dtype == dt
+
+
+# ---------------------------------------------------------------------------
+# B2: forward-backward occlusion mask
+# ---------------------------------------------------------------------------
+
+def test_fb_zero_flows_all_valid():
+    h, w = 8, 8
+    fwd = np.zeros((h, w, 2), dtype=np.float32)
+    bwd = np.zeros((h, w, 2), dtype=np.float32)
+    valid = compute_fb_mask(fwd, bwd, threshold=1.5)
+    assert valid.shape == (h, w)
+    assert valid.all(), "zero flows should give zero round-trip error"
+
+
+def test_fb_perfect_inverse_flows_valid_interior():
+    # fwd=(+1,0), bwd=(-1,0): round-trip residual is zero for interior pixels.
+    h, w = 8, 8
+    fwd = np.zeros((h, w, 2), dtype=np.float32)
+    fwd[..., 0] = 1.0
+    bwd = np.zeros((h, w, 2), dtype=np.float32)
+    bwd[..., 0] = -1.0
+    valid = compute_fb_mask(fwd, bwd, threshold=1.5)
+    # Interior pixels (x >= 1) should be valid; x=0 has src_x=-1 (out of bounds).
+    assert valid[:, 1:].all(), "interior pixels should be valid"
+    assert not valid[:, 0].any(), "left border out-of-bounds → invalid"
+
+
+def test_fb_large_inconsistency_all_invalid():
+    h, w = 6, 6
+    fwd = np.zeros((h, w, 2), dtype=np.float32)
+    fwd[..., 0] = 10.0   # forward says go right 10 px
+    bwd = np.zeros((h, w, 2), dtype=np.float32)
+    # backward says stay (don't move) → residual = 10 px → all invalid
+    valid = compute_fb_mask(fwd, bwd, threshold=1.5)
+    assert not valid.any()
+
+
+def test_fb_threshold_respected():
+    h, w = 4, 4
+    fwd = np.zeros((h, w, 2), dtype=np.float32)
+    fwd[..., 0] = 1.0   # residual will be ~1 px
+    bwd = np.zeros((h, w, 2), dtype=np.float32)
+    assert compute_fb_mask(fwd, bwd, threshold=2.0)[:, :].any(), "below threshold → valid"
+    assert not compute_fb_mask(fwd, bwd, threshold=0.5).any(), "above threshold → invalid"
+
+
+def test_fb_shape_mismatch_raises():
+    fwd = np.zeros((4, 4, 2), dtype=np.float32)
+    bwd = np.zeros((3, 4, 2), dtype=np.float32)
+    with pytest.raises(ValueError):
+        compute_fb_mask(fwd, bwd)
