@@ -1,4 +1,4 @@
-"""Evaluation metrics (mIoU / per-class IoU).
+"""Evaluation metrics (mIoU / per-class IoU) — WP B3."""
+from .metrics import compute_iou
 
-Implemented in Phase B (WP B3). Empty placeholder so the namespace exists.
-"""
+__all__ = ["compute_iou"]
