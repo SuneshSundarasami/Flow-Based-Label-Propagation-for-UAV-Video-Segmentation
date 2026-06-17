@@ -9,12 +9,22 @@ See [`plan.md`](plan.md) for the full work-package breakdown and
 
 ## Status
 
-**Phase A (Foundation) — in progress.** Package scaffold, SEA-RAFT wrapper +
-smoke test, and the Ruralscapes loader are in place. A1 is verified: the
-`uav-flowprop` conda environment builds, local packages import with `src` on the
-Python path, and the Phase A lightweight tests pass. A2 is verified on CPU with
-a downloaded SEA-RAFT checkpoint, one synthetic pair, and the SEA-RAFT sample
-real pair. A3 is verified on the real Ruralscapes `DJI_0043` video/labels.
+**Phase A (Foundation) — complete.** Package scaffold, SEA-RAFT wrapper +
+smoke test, and the Ruralscapes loader are in place and verified. `uav-flowprop`
+conda env builds; SEA-RAFT runs on CPU with a downloaded checkpoint; `DJI_0043`
+data loads (142 matched frame/mask pairs, median annotation spacing 50 frames).
+
+**Phase B (Core pipeline) — B1–B4 complete, B5 pending.**
+
+| WP | What | Status |
+|----|------|--------|
+| B1 | Nearest-neighbour mask warp (`warp/mask_warp.py`) | ☑ done — 6 tests |
+| B2 | Forward–backward occlusion mask (`warp/occlusion.py`) | ☑ done — 5 tests |
+| B3 | mIoU + per-class IoU metric (`eval/metrics.py`) | ☑ done — 9 tests |
+| B4 | End-to-end single-keyframe propagation (`propagation/`) | ☑ done — 10 tests |
+| B5 | Config + CLI runner | ☐ pending |
+
+All 37 unit tests pass (`conda run -n uav-flowprop pytest -q`).
 
 ## Setup (conda)
 
@@ -43,12 +53,17 @@ conda run -n uav-flowprop pytest -q
 ```
 src/                   # source packages (flat)
   config/              # default.yaml + loader (deep-merge overrides)
-  flow/                # SEA-RAFT wrapper: estimate_flow(img1, img2)
-  warp/                # mask warping + FB occlusion        (Phase B)
-  eval/                # mIoU / per-class IoU                (Phase B)
+  flow/                # SEA-RAFT wrapper + FlowEstimator Protocol
+  warp/                # mask_warp (B1) + occlusion FB check (B2)
+  eval/                # mIoU / per-class IoU (B3)
+  propagation/         # end-to-end single-keyframe pipeline (B4)
   data/                # Ruralscapes loader + class palette
   viz/                 # flow color-wheel visualization
-scripts/               # CLI entry points (smoke tests, downloads)
+scripts/               # CLI entry points
+  smoke_test_flow.py   # A2 flow smoke test
+  inspect_data.py      # A3 data loader check
+  check_warp.py        # B1/B2 visual 4-panel check
+  run_propagation.py   # B4 end-to-end run with mIoU table + CSV
 tests/                 # pytest (pythonpath=src)
 third_party/SEA-RAFT/  # pinned git submodule (optical flow backbone)
 docs/                  # literature notes, write-ups
@@ -130,3 +145,45 @@ python scripts/inspect_data.py --root tests/fixtures/ruralscapes_demo \
 The RGB palette in [`src/data/palette.yaml`](src/data/palette.yaml) follows
 `CLASS_COLORS_RGB` from the official SegProp preprocessing script; class-name
 ordering should still be treated carefully before reporting per-class results.
+
+## Phase B: core pipeline
+
+### B1/B2 — warp + occlusion visual check
+
+Warps the keyframe mask to the next 3 annotated frames and writes 4-panel
+images (keyframe GT / warped / target GT / validity mask) to `outputs/warp_check/`:
+
+```bash
+conda run -n uav-flowprop python scripts/check_warp.py \
+    --root data/Ruralscapes \
+    --frame-glob "frames/DJI_0043/*.jpg" \
+    --mask-glob "labels/manual_labels/DJI_0043/*.png" \
+    --mask-format color \
+    --n-targets 3 \
+    --device cuda
+```
+
+Validity mask: white = FB round-trip error < 1.5 px (valid); red = occluded /
+unreliable. Interior red marks arise from parallax, motion discontinuities, and
+true occlusions — not only at frame borders.
+
+### B3/B4 — end-to-end propagation with mIoU table
+
+Propagates from the first annotated keyframe to N subsequent annotated targets,
+prints a distance / valid% / mIoU / per-class IoU table to the terminal, and
+saves `outputs/propagation/results.csv` and 4-panel images:
+
+```bash
+conda run -n uav-flowprop python scripts/run_propagation.py \
+    --root data/Ruralscapes \
+    --frame-glob "frames/DJI_0043/*.jpg" \
+    --mask-glob "labels/manual_labels/DJI_0043/*.png" \
+    --mask-format color \
+    --n-targets 5 \
+    --device cuda
+```
+
+IoU is evaluated over **valid pixels only** (FB mask from B2), using
+`ignore_index = 255` for unlabelled regions. Flow model: SEA-RAFT spring-L
+(12 refinement iterations) — roughly 3× lower EPE than SegProp's FlowNet2
+on Sintel clean.
