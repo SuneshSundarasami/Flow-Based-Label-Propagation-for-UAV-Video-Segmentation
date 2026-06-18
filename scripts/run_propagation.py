@@ -156,28 +156,41 @@ def main() -> int:
         class_cols = "  ".join(class_strs)
         print(f"+{r.distance:>5}  {r.valid_pct:>6.1f}%  {miou_all_str:>10}  {miou_valid_str:>11}  {class_cols}")
 
-        row: dict = {"distance": r.distance, "valid_pct": f"{r.valid_pct:.2f}"}
+        def _fv(v):
+            return f"{v:.4f}" if not math.isnan(v) else "nan"
+
+        base = {"distance": r.distance, "valid_pct": f"{r.valid_pct:.2f}"}
+
+        row_all = dict(base)
+        row_valid = dict(base)
         if r.iou:
-            def _fv(v):
-                return f"{v:.4f}" if not math.isnan(v) else "nan"
-            row["miou_all"] = _fv(iou_all["miou"])
-            row["miou_valid_only"] = _fv(iou_valid["miou"])
+            row_all["miou"] = _fv(iou_all["miou"])
+            row_valid["miou"] = _fv(iou_valid["miou"])
             for c in range(num_classes):
-                row[f"{class_names[c]}_all"] = _fv(iou_all["per_class"].get(c, float("nan")))
-                row[f"{class_names[c]}_valid"] = _fv(iou_valid["per_class"].get(c, float("nan")))
-        csv_rows.append(row)
+                row_all[class_names[c]] = _fv(iou_all["per_class"].get(c, float("nan")))
+                row_valid[class_names[c]] = _fv(iou_valid["per_class"].get(c, float("nan")))
+        csv_rows.append((row_all, row_valid))
 
     # ------------------------------------------------------------------
-    # Save CSV
+    # Save two CSVs
     # ------------------------------------------------------------------
-    csv_path = out_dir / "results.csv"
     if csv_rows:
-        fieldnames = list(csv_rows[0].keys())
-        with open(csv_path, "w", newline="") as fh:
-            writer = csv.DictWriter(fh, fieldnames=fieldnames)
-            writer.writeheader()
-            writer.writerows(csv_rows)
-        print(f"\n[prop] results saved to {csv_path}")
+        def _fv(v):
+            return f"{v:.4f}" if not math.isnan(v) else "nan"
+
+        rows_all = [r[0] for r in csv_rows]
+        rows_valid = [r[1] for r in csv_rows]
+
+        for path, rows in [
+            (out_dir / "results_all_pixels.csv", rows_all),
+            (out_dir / "results_valid_pixels.csv", rows_valid),
+        ]:
+            fieldnames = list(rows[0].keys())
+            with open(path, "w", newline="") as fh:
+                writer = csv.DictWriter(fh, fieldnames=fieldnames)
+                writer.writeheader()
+                writer.writerows(rows)
+            print(f"[prop] saved {path}")
 
     # ------------------------------------------------------------------
     # Save 4-panel images
