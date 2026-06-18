@@ -132,29 +132,39 @@ def main() -> int:
     )
 
     # ------------------------------------------------------------------
-    # Print table
+    # Print table  (two mIoU columns: all pixels vs valid-only pixels)
     # ------------------------------------------------------------------
     col_w = max(10, max(len(n) for n in class_names))
     header_classes = "  ".join(f"{n:>{col_w}}" for n in class_names)
-    print(f"\n{'dist':>6}  {'valid%':>7}  {'mIoU':>6}  {header_classes}")
-    print("-" * (6 + 2 + 7 + 2 + 6 + 2 + (col_w + 2) * num_classes))
+    print(f"\n{'dist':>6}  {'valid%':>7}  {'mIoU(all)':>10}  {'mIoU(valid)':>11}  {header_classes}")
+    sep_w = 6 + 2 + 7 + 2 + 10 + 2 + 11 + 2 + (col_w + 2) * num_classes
+    print("-" * sep_w)
 
     csv_rows = []
     for r in results:
-        miou_str = _fmt(r.iou["miou"] if r.iou else None)
+        iou_all = r.iou["all"] if r.iou else None
+        iou_valid = r.iou["valid_only"] if r.iou else None
+
+        miou_all_str = _fmt(iou_all["miou"] if iou_all else None)
+        miou_valid_str = _fmt(iou_valid["miou"] if iou_valid else None)
+
+        # per-class columns use the valid-only IoU (the primary measure)
         class_strs = []
         for c in range(num_classes):
-            v = r.iou["per_class"].get(c) if r.iou else None
+            v = iou_valid["per_class"].get(c) if iou_valid else None
             class_strs.append(f"{_fmt(v):>{col_w}}")
         class_cols = "  ".join(class_strs)
-        print(f"+{r.distance:>5}  {r.valid_pct:>6.1f}%  {miou_str}  {class_cols}")
+        print(f"+{r.distance:>5}  {r.valid_pct:>6.1f}%  {miou_all_str:>10}  {miou_valid_str:>11}  {class_cols}")
 
         row: dict = {"distance": r.distance, "valid_pct": f"{r.valid_pct:.2f}"}
         if r.iou:
-            row["miou"] = f"{r.iou['miou']:.4f}" if not math.isnan(r.iou["miou"]) else "nan"
+            def _fv(v):
+                return f"{v:.4f}" if not math.isnan(v) else "nan"
+            row["miou_all"] = _fv(iou_all["miou"])
+            row["miou_valid_only"] = _fv(iou_valid["miou"])
             for c in range(num_classes):
-                v = r.iou["per_class"].get(c, float("nan"))
-                row[class_names[c]] = f"{v:.4f}" if not math.isnan(v) else "nan"
+                row[f"{class_names[c]}_all"] = _fv(iou_all["per_class"].get(c, float("nan")))
+                row[f"{class_names[c]}_valid"] = _fv(iou_valid["per_class"].get(c, float("nan")))
         csv_rows.append(row)
 
     # ------------------------------------------------------------------
@@ -190,8 +200,12 @@ def main() -> int:
         validity_vis = tgt_frame.copy()
         validity_vis[~r.valid_mask] = [180, 30, 30]
 
-        miou_label = (f"mIoU={r.iou['miou']:.3f}" if r.iou and not math.isnan(r.iou['miou'])
-                      else "mIoU=n/a")
+        _miou_all = r.iou["all"]["miou"] if r.iou else float("nan")
+        _miou_v = r.iou["valid_only"]["miou"] if r.iou else float("nan")
+        miou_label = (
+            f"mIoU all={_miou_all:.3f}  valid={_miou_v:.3f}"
+            if r.iou and not math.isnan(_miou_all) else "mIoU=n/a"
+        )
         labels = [
             f"keyframe {kf_idx} (GT)",
             f"target {t_idx} (warped, +{r.distance}f)  {miou_label}",

@@ -103,7 +103,8 @@ def test_iou_computed_with_gt():
     )
     r = results[0]
     assert r.iou is not None
-    assert r.iou["miou"] == pytest.approx(1.0)
+    assert r.iou["all"]["miou"] == pytest.approx(1.0)
+    assert r.iou["valid_only"]["miou"] == pytest.approx(1.0)
 
 
 def test_iou_none_when_no_gt():

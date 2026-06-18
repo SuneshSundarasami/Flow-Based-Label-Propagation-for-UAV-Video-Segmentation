@@ -6,6 +6,13 @@ Confusion-matrix approach:
     FP[c] = conf[:, c].sum() - TP[c]   # pred=c but gt≠c
     IoU[c] = TP / (TP + FN + FP)
 
+``compute_iou`` always returns **two** IoU evaluations:
+
+* ``"all"``        — over every pixel except those labelled ``ignore_index``
+* ``"valid_only"`` — additionally excludes pixels where ``valid_mask`` is False
+                     (e.g. the forward-backward occlusion mask from B2).
+                     Equals ``"all"`` when no ``valid_mask`` is supplied.
+
 mIoU is averaged over classes present in the ground-truth after masking.
 """
 from __future__ import annotations
@@ -13,49 +20,13 @@ from __future__ import annotations
 import numpy as np
 
 
-def compute_iou(
+def _iou_from_keep(
     pred: np.ndarray,
     gt: np.ndarray,
     num_classes: int,
-    ignore_index: int = 255,
-    valid_mask: np.ndarray | None = None,
+    keep: np.ndarray,
 ) -> dict:
-    """Compute per-class IoU and mIoU between a predicted and ground-truth mask.
-
-    Parameters
-    ----------
-    pred:
-        (H, W) integer predicted labels.
-    gt:
-        (H, W) integer ground-truth labels.
-    num_classes:
-        Number of valid class ids (0 … num_classes-1).
-    ignore_index:
-        Pixels with this label in *either* pred or gt are excluded.
-    valid_mask:
-        Optional (H, W) bool array — additional pixels to exclude, e.g.
-        the output of ``compute_fb_mask``.  False pixels are excluded.
-
-    Returns
-    -------
-    dict with keys:
-        ``per_class`` : dict mapping class_id → IoU float (nan if absent in gt)
-        ``miou``      : float — mean IoU over classes present in gt
-        ``present``   : list[int] — class ids that appear in the (masked) gt
-    """
-    if pred.shape != gt.shape:
-        raise ValueError(
-            f"pred and gt must have the same shape; got {pred.shape} vs {gt.shape}"
-        )
-    if valid_mask is not None and valid_mask.shape != gt.shape:
-        raise ValueError(
-            f"valid_mask shape {valid_mask.shape} != gt shape {gt.shape}"
-        )
-
-    keep = (gt != ignore_index) & (pred != ignore_index)
-    if valid_mask is not None:
-        keep &= valid_mask
-
+    """Compute IoU stats over the pixels selected by *keep*."""
     gt_flat = gt[keep].astype(np.int64)
     pred_flat = pred[keep].astype(np.int64)
 
@@ -83,4 +54,66 @@ def compute_iou(
         "per_class": {c: float(iou[c]) for c in range(num_classes)},
         "miou": miou,
         "present": present,
+    }
+
+
+def compute_iou(
+    pred: np.ndarray,
+    gt: np.ndarray,
+    num_classes: int,
+    ignore_index: int = 255,
+    valid_mask: np.ndarray | None = None,
+) -> dict:
+    """Compute per-class IoU and mIoU in two ways simultaneously.
+
+    Parameters
+    ----------
+    pred:
+        (H, W) integer predicted labels.
+    gt:
+        (H, W) integer ground-truth labels.
+    num_classes:
+        Number of valid class ids (0 … num_classes-1).
+    ignore_index:
+        Pixels with this label in *either* pred or gt are always excluded.
+    valid_mask:
+        Optional (H, W) bool array from ``compute_fb_mask``.
+        False pixels are excluded from the ``"valid_only"`` result but
+        **not** from ``"all"``.
+
+    Returns
+    -------
+    dict with two sub-dicts, each containing ``per_class``, ``miou``,
+    and ``present``:
+
+    ``"all"``
+        IoU evaluated on every non-ignored pixel (ignores *valid_mask*).
+        Use this to compare against baselines that have no occlusion mask.
+    ``"valid_only"``
+        IoU restricted to pixels where *valid_mask* is True.
+        Use this for the fairest measure of the warp quality (excludes
+        occluded / flow-unreliable regions). Equals ``"all"`` when
+        *valid_mask* is None.
+    """
+    if pred.shape != gt.shape:
+        raise ValueError(
+            f"pred and gt must have the same shape; got {pred.shape} vs {gt.shape}"
+        )
+    if valid_mask is not None and valid_mask.shape != gt.shape:
+        raise ValueError(
+            f"valid_mask shape {valid_mask.shape} != gt shape {gt.shape}"
+        )
+
+    keep_all = (gt != ignore_index) & (pred != ignore_index)
+    result_all = _iou_from_keep(pred, gt, num_classes, keep_all)
+
+    if valid_mask is not None:
+        keep_valid = keep_all & valid_mask
+        result_valid = _iou_from_keep(pred, gt, num_classes, keep_valid)
+    else:
+        result_valid = result_all
+
+    return {
+        "all": result_all,
+        "valid_only": result_valid,
     }
