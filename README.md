@@ -24,7 +24,7 @@ data loads (142 matched frame/mask pairs, median annotation spacing 50 frames).
 | B4 | End-to-end single-keyframe propagation (`propagation/`) | ☑ done — 10 tests |
 | B5 | Config + CLI runner | ☑ done — 8 tests |
 
-All 48 unit tests pass (`conda run -n uav-flowprop pytest -q`).
+All 49 unit tests pass (`conda run -n uav-flowprop pytest -q`).
 
 ## Setup (conda)
 
@@ -175,6 +175,7 @@ the terminal, and saves 4-panel images plus two CSVs:
 
 - `outputs/propagation/results_all_pixels.csv` — IoU over all non-ignored pixels
 - `outputs/propagation/results_valid_pixels.csv` — IoU restricted to FB-valid pixels
+- `outputs/results/keyframe_<K>.csv` — per-pair table (`keyframe`, `target_frame`, `distance`, `valid_pct`, `miou_all`, `miou_valid`, `iou_class0`, `iou_class1`, …); this is the format C1 aggregates across all keyframes
 
 All settings come from `src/config/default.yaml`, so a bare command is enough:
 

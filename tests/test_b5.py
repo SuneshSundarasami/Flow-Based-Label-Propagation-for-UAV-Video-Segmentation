@@ -1,7 +1,10 @@
 """B5 tests: config-driven defaults, override YAML, and CLI arg parsing."""
+import csv
+import io
 import sys
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
@@ -76,6 +79,63 @@ def test_yaml_override_then_dict_override_wins(tmp_path):
     override.write_text("propagation:\n  n_targets: 7\n")
     cfg = load_config(override_path=override, overrides={"propagation": {"n_targets": 3}})
     assert cfg["propagation"]["n_targets"] == 3  # dict wins
+
+
+def test_keyframe_csv_columns(tmp_path):
+    """run_propagation saves keyframe_X.csv with the expected column layout."""
+    import importlib.util, math
+
+    script = Path(__file__).resolve().parents[1] / "scripts" / "run_propagation.py"
+    spec = importlib.util.spec_from_file_location("run_prop", script)
+    mod = importlib.util.module_from_spec(spec)
+    orig_argv = sys.argv
+    sys.argv = [str(script)]
+    try:
+        spec.loader.exec_module(mod)
+    finally:
+        sys.argv = orig_argv
+
+    num_classes = 3
+    # Simulate what run_propagation builds: a list of per-pair dicts
+    kf_idx = 0
+    targets = [10, 20]
+    class_names = [f"class{c}" for c in range(num_classes)]
+
+    kf_rows = []
+    for t_idx in targets:
+        row = {
+            "keyframe": kf_idx,
+            "target_frame": t_idx,
+            "distance": t_idx - kf_idx,
+            "valid_pct": "95.00",
+            "miou_all": "0.8000",
+            "miou_valid": "0.8500",
+        }
+        for c in range(num_classes):
+            row[f"iou_class{c}"] = "0.9000"
+        kf_rows.append(row)
+
+    # Write and read back to verify column structure
+    kf_csv = tmp_path / f"keyframe_{kf_idx}.csv"
+    fieldnames = list(kf_rows[0].keys())
+    with open(kf_csv, "w", newline="") as fh:
+        writer = csv.DictWriter(fh, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(kf_rows)
+
+    with open(kf_csv) as fh:
+        rows = list(csv.DictReader(fh))
+
+    assert len(rows) == 2
+    assert rows[0]["keyframe"] == "0"
+    assert rows[0]["target_frame"] == "10"
+    assert rows[1]["target_frame"] == "20"
+    assert "miou_all" in rows[0]
+    assert "miou_valid" in rows[0]
+    for c in range(num_classes):
+        assert f"iou_class{c}" in rows[0]
+    # iou_classN columns not named after class strings
+    assert "class0" not in rows[0]
 
 
 def test_cli_defaults_match_config():

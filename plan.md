@@ -146,7 +146,10 @@ check.
   (identity warp, valid pct, distance, shapes, IoU with/without GT, multiple
   targets, length-mismatch errors). `scripts/run_propagation.py` prints a
   distance / valid% / mIoU(all) / mIoU(valid) / per-class table and saves two
-  CSVs: `results_all_pixels.csv` and `results_valid_pixels.csv`.
+  CSVs (`results_all_pixels.csv`, `results_valid_pixels.csv`) and a
+  per-keyframe summary at `outputs/results/keyframe_{K}.csv` with columns
+  `keyframe, target_frame, distance, valid_pct, miou_all, miou_valid,
+  iou_class0, iou_class1, …` — the format C1 concatenates across keyframes.
   Real-data decreasing-mIoU sanity check is ready to run (requires GPU).
 
 **B5. Config + CLI runner** — *0.5 d*
@@ -232,7 +235,7 @@ budget; show higher overall mIoU.
 | B2 | Forward–backward occlusion mask | ☑ done; `warp/occlusion.py` + 5 tests; 99.8%→95.4% valid at +50→+150 f |
 | B3 | mIoU + per-class IoU metric | ☑ done; `eval/metrics.py` + 9 tests; confusion-matrix, valid-mask support |
 | B4 | End-to-end single-keyframe propagation | ☑ done; `propagation/propagate.py` + 10 tests; `run_propagation.py` ready |
-| B5 | Config + CLI runner | ☑ done; `default.yaml` data section + `--config` override; 8 tests |
+| B5 | Config + CLI runner | ☑ done; `default.yaml` data section + `--config` override + `keyframe_X.csv`; 9 tests |
 | C1 | Full-video batched run | ☐ todo |
 | C2 | mIoU-vs-distance decay curve | ☐ todo |
 | C3 | Difficulty heatmap over timeline | ☐ todo |
