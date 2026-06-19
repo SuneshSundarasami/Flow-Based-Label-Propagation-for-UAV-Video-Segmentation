@@ -1,20 +1,24 @@
-"""B4 end-to-end single-keyframe propagation with mIoU evaluation.
+"""B4/B5 end-to-end single-keyframe propagation with mIoU evaluation.
 
-Loads the first annotated frame from a Ruralscapes video as the keyframe,
-propagates its mask to subsequent annotated frames via SEA-RAFT optical flow,
-and reports per-frame and per-class IoU (evaluated on valid pixels only).
+All settings are read from ``src/config/default.yaml`` (or a user-supplied
+override YAML).  Every CLI flag is optional and overrides the corresponding
+config value when given.  This means a single command with no flags is enough
+to reproduce results:
 
-Results are printed as a table and saved to outputs/propagation/results.csv.
+    python scripts/run_propagation.py
 
-Usage
------
-    python scripts/run_propagation.py \\
-        --root data/Ruralscapes \\
-        --frame-glob "frames/DJI_0043/*.jpg" \\
-        --mask-glob "labels/manual_labels/DJI_0043/*.png" \\
-        --mask-format color \\
-        --n-targets 5 \\
-        --device cuda
+To run with a custom config:
+
+    python scripts/run_propagation.py --config experiments/long_window.yaml
+
+Individual overrides (for quick experiments without a full YAML):
+
+    python scripts/run_propagation.py --n-targets 10 --device cpu
+
+Results are saved to outputs/propagation/:
+  results_all_pixels.csv   — IoU over every non-ignored pixel
+  results_valid_pixels.csv — IoU restricted to FB-valid pixels
+  prop_kf<K>_to_<T>.png   — 4-panel visualisation per target frame
 """
 from __future__ import annotations
 
@@ -40,6 +44,25 @@ from propagation import propagate_keyframe  # noqa: E402
 _VIZ_W, _VIZ_H = 960, 540
 
 
+def _pre_load_config(argv=None) -> dict:
+    """Load config early so argparse can use config values as defaults.
+
+    Scans *argv* (or sys.argv) for ``--config PATH`` / ``--config=PATH``
+    without a full argparse pass, then calls load_config with that path.
+    """
+    if argv is None:
+        argv = sys.argv[1:]
+    cfg_path = None
+    for i, arg in enumerate(argv):
+        if arg == "--config" and i + 1 < len(argv):
+            cfg_path = argv[i + 1]
+            break
+        if arg.startswith("--config="):
+            cfg_path = arg.split("=", 1)[1]
+            break
+    return load_config(override_path=cfg_path)
+
+
 def _resize(img: np.ndarray, w: int, h: int, interp=cv2.INTER_LINEAR) -> np.ndarray:
     return cv2.resize(img, (w, h), interpolation=interp)
 
@@ -62,18 +85,43 @@ def _fmt(v: float | None, pct: bool = False) -> str:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--root", required=True)
-    ap.add_argument("--frame-glob", default="frames/DJI_0043/*.jpg")
-    ap.add_argument("--mask-glob", default="labels/manual_labels/DJI_0043/*.png")
-    ap.add_argument("--mask-format", default="color", choices=["color", "indexed"])
-    ap.add_argument("--n-targets", type=int, default=5,
-                    help="number of annotated frames after the keyframe to evaluate")
-    ap.add_argument("--device", default="cuda")
+    cfg = _pre_load_config()
+
+    ap = argparse.ArgumentParser(
+        description="Propagate keyframe labels via SEA-RAFT and evaluate mIoU."
+    )
+    ap.add_argument(
+        "--config", default=None, metavar="YAML",
+        help="Override YAML deep-merged on top of default.yaml.",
+    )
+    ap.add_argument(
+        "--root", default=cfg["paths"]["dataset_root"],
+        help="Root of the Ruralscapes dataset. [default: %(default)s]",
+    )
+    ap.add_argument(
+        "--frame-glob", default=cfg["data"]["frame_glob"],
+        help="Glob for video frames, relative to --root. [default: %(default)s]",
+    )
+    ap.add_argument(
+        "--mask-glob", default=cfg["data"]["mask_glob"],
+        help="Glob for GT masks, relative to --root. [default: %(default)s]",
+    )
+    ap.add_argument(
+        "--mask-format", default=cfg["data"]["mask_format"],
+        choices=["color", "indexed"],
+        help="Mask encoding. [default: %(default)s]",
+    )
+    ap.add_argument(
+        "--n-targets", type=int, default=cfg["propagation"]["n_targets"],
+        help="Number of annotated frames after the keyframe to evaluate. [default: %(default)s]",
+    )
+    ap.add_argument(
+        "--device", default=cfg["flow"]["device"],
+        help="Torch device for SEA-RAFT. [default: %(default)s]",
+    )
     args = ap.parse_args()
 
-    cfg = load_config()
-    out_dir = _REPO_ROOT / "outputs" / "propagation"
+    out_dir = _REPO_ROOT / cfg["paths"]["output_dir"] / "propagation"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     video = RuralscapesVideo(
@@ -148,7 +196,6 @@ def main() -> int:
         miou_all_str = _fmt(iou_all["miou"] if iou_all else None)
         miou_valid_str = _fmt(iou_valid["miou"] if iou_valid else None)
 
-        # per-class columns use the valid-only IoU (the primary measure)
         class_strs = []
         for c in range(num_classes):
             v = iou_valid["per_class"].get(c) if iou_valid else None
@@ -175,9 +222,6 @@ def main() -> int:
     # Save two CSVs
     # ------------------------------------------------------------------
     if csv_rows:
-        def _fv(v):
-            return f"{v:.4f}" if not math.isnan(v) else "nan"
-
         rows_all = [r[0] for r in csv_rows]
         rows_valid = [r[1] for r in csv_rows]
 

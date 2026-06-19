@@ -11,6 +11,14 @@ paths:
   # Where run artifacts (tables, figures) are written.
   output_dir: outputs
 
+data:
+  # Glob patterns relative to dataset_root for frames and dense GT masks.
+  frame_glob: "frames/DJI_0043/*.jpg"
+  mask_glob: "labels/manual_labels/DJI_0043/*.png"
+  # "color" = RGB PNG where each pixel colour encodes the class;
+  # "indexed" = single-channel PNG with raw class ids.
+  mask_format: color
+
 flow:
   # SEA-RAFT model config file (one of the yamls shipped in the submodule).
   # spring-L uses the same checkpoint as spring-M but runs 12 refinement
@@ -25,6 +33,8 @@ propagation:
   window: 30
   # Spacing between keyframes when scaling to the full video (Phase C).
   keyframe_interval: 30
+  # Number of annotated frames after the keyframe to evaluate in a single run.
+  n_targets: 5
 
 occlusion:
   # Forward-backward consistency threshold (pixels). Pixels whose round-trip
