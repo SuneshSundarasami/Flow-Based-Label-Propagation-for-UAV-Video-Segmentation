@@ -145,13 +145,23 @@ check.
   per target (warped mask, valid mask, valid%, IoU dict). 10 unit tests passing
   (identity warp, valid pct, distance, shapes, IoU with/without GT, multiple
   targets, length-mismatch errors). `scripts/run_propagation.py` prints a
-  distance / valid% / mIoU / per-class table and saves `outputs/propagation/results.csv`.
+  distance / valid% / mIoU(all) / mIoU(valid) / per-class table and saves two
+  CSVs: `results_all_pixels.csv` and `results_valid_pixels.csv`.
   Real-data decreasing-mIoU sanity check is ready to run (requires GPU).
 
 **B5. Config + CLI runner** — *0.5 d*
 - Single config (keyframe interval, window size, FB threshold, paths) driving a
   reproducible CLI run; results saved to disk (CSV/JSON).
 - *Done when:* one command reproduces B4's numbers from config.
+- *Verified:* `src/config/default.yaml` extended with a `data:` section
+  (`frame_glob`, `mask_glob`, `mask_format`) and `propagation.n_targets`.
+  `run_propagation.py` now reads all settings from config; every CLI flag is
+  optional and falls back to the config value. A `--config YAML` flag accepts
+  a user-supplied override file (deep-merged on top of defaults). Bare
+  `python scripts/run_propagation.py` reproduces B4 numbers with no extra flags.
+  8 unit tests in `tests/test_b5.py` cover config key completeness, YAML and
+  dict overrides, merge-order priority, and CLI-default alignment. All 48 tests
+  pass.
 
 > **Milestone M2:** End-to-end pipeline validated on a short clip with correct,
 > decreasing mIoU.
@@ -222,7 +232,7 @@ budget; show higher overall mIoU.
 | B2 | Forward–backward occlusion mask | ☑ done; `warp/occlusion.py` + 5 tests; 99.8%→95.4% valid at +50→+150 f |
 | B3 | mIoU + per-class IoU metric | ☑ done; `eval/metrics.py` + 9 tests; confusion-matrix, valid-mask support |
 | B4 | End-to-end single-keyframe propagation | ☑ done; `propagation/propagate.py` + 10 tests; `run_propagation.py` ready |
-| B5 | Config + CLI runner | ☐ todo |
+| B5 | Config + CLI runner | ☑ done; `default.yaml` data section + `--config` override; 8 tests |
 | C1 | Full-video batched run | ☐ todo |
 | C2 | mIoU-vs-distance decay curve | ☐ todo |
 | C3 | Difficulty heatmap over timeline | ☐ todo |

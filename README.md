@@ -14,17 +14,17 @@ smoke test, and the Ruralscapes loader are in place and verified. `uav-flowprop`
 conda env builds; SEA-RAFT runs on CPU with a downloaded checkpoint; `DJI_0043`
 data loads (142 matched frame/mask pairs, median annotation spacing 50 frames).
 
-**Phase B (Core pipeline) — B1–B4 complete, B5 pending.**
+**Phase B (Core pipeline) — complete.**
 
 | WP | What | Status |
 |----|------|--------|
 | B1 | Nearest-neighbour mask warp (`warp/mask_warp.py`) | ☑ done — 6 tests |
 | B2 | Forward–backward occlusion mask (`warp/occlusion.py`) | ☑ done — 5 tests |
-| B3 | mIoU + per-class IoU metric (`eval/metrics.py`) | ☑ done — 9 tests |
+| B3 | mIoU + per-class IoU metric (`eval/metrics.py`) | ☑ done — 12 tests |
 | B4 | End-to-end single-keyframe propagation (`propagation/`) | ☑ done — 10 tests |
-| B5 | Config + CLI runner | ☐ pending |
+| B5 | Config + CLI runner | ☑ done — 8 tests |
 
-All 37 unit tests pass (`conda run -n uav-flowprop pytest -q`).
+All 48 unit tests pass (`conda run -n uav-flowprop pytest -q`).
 
 ## Setup (conda)
 
@@ -167,23 +167,37 @@ Validity mask: white = FB round-trip error < 1.5 px (valid); red = occluded /
 unreliable. Interior red marks arise from parallax, motion discontinuities, and
 true occlusions — not only at frame borders.
 
-### B3/B4 — end-to-end propagation with mIoU table
+### B3/B4/B5 — end-to-end propagation with mIoU table
 
 Propagates from the first annotated keyframe to N subsequent annotated targets,
-prints a distance / valid% / mIoU / per-class IoU table to the terminal, and
-saves `outputs/propagation/results.csv` and 4-panel images:
+prints a distance / valid% / mIoU(all) / mIoU(valid) / per-class IoU table to
+the terminal, and saves 4-panel images plus two CSVs:
+
+- `outputs/propagation/results_all_pixels.csv` — IoU over all non-ignored pixels
+- `outputs/propagation/results_valid_pixels.csv` — IoU restricted to FB-valid pixels
+
+All settings come from `src/config/default.yaml`, so a bare command is enough:
+
+```bash
+conda run -n uav-flowprop python scripts/run_propagation.py
+```
+
+Override individual settings on the CLI:
 
 ```bash
 conda run -n uav-flowprop python scripts/run_propagation.py \
-    --root data/Ruralscapes \
-    --frame-glob "frames/DJI_0043/*.jpg" \
-    --mask-glob "labels/manual_labels/DJI_0043/*.png" \
-    --mask-format color \
-    --n-targets 5 \
-    --device cuda
+    --n-targets 10 --device cpu
 ```
 
-IoU is evaluated over **valid pixels only** (FB mask from B2), using
-`ignore_index = 255` for unlabelled regions. Flow model: SEA-RAFT spring-L
+Or supply an override YAML (deep-merged on top of defaults):
+
+```bash
+conda run -n uav-flowprop python scripts/run_propagation.py \
+    --config experiments/long_window.yaml
+```
+
+IoU is evaluated in two modes: **all pixels** (every non-ignored pixel, for
+fair baseline comparison) and **valid-only** (additionally excludes FB-invalid
+pixels, the primary quality measure). Flow model: SEA-RAFT spring-L
 (12 refinement iterations) — roughly 3× lower EPE than SegProp's FlowNet2
 on Sintel clean.
