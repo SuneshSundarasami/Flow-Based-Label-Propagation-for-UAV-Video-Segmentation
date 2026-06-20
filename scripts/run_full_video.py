@@ -26,11 +26,15 @@ from __future__ import annotations
 import argparse
 import sys
 import time
+import warnings
 from pathlib import Path
 
 import cv2
 import numpy as np
 from tqdm import tqdm
+
+# Suppress a harmless torch warning about meshgrid indexing arg.
+warnings.filterwarnings("ignore", message=".*meshgrid.*indexing.*", category=UserWarning)
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_REPO_ROOT / "src"))
@@ -145,38 +149,30 @@ def main() -> int:
         print(f"[c1] model loaded in {time.time() - t_load:.1f}s\n")
 
     # ------------------------------------------------------------------
-    # Main loop — outer tqdm over keyframes, inner tqdm over targets
+    # Main loop — single tqdm bar over keyframes; per-target lines via tqdm.write
     # ------------------------------------------------------------------
     t0 = time.time()
+    sys.stdout.flush()
+
     kf_bar = tqdm(todo, desc="keyframes", unit="kf",
-                  dynamic_ncols=True, position=0)
+                  dynamic_ncols=True, disable=not todo, file=sys.stdout)
 
     for kf_idx in kf_bar:
         targets = forward_targets(ann, kf_idx, args.n_targets)
         if not targets:
-            kf_bar.write(f"[c1] kf={kf_idx}: no forward targets, skipping")
+            tqdm.write(f"[c1] kf={kf_idx}: no forward targets, skipping", file=sys.stdout)
             continue
 
-        kf_bar.set_postfix_str(f"kf={kf_idx} targets={targets}")
+        kf_bar.set_postfix_str(f"kf={kf_idx}")
+        tqdm.write(f"[c1] kf={kf_idx:>5}  targets={targets}", file=sys.stdout)
 
-        # Load keyframe
+        # Load keyframe once
         kf_frame = _resize(video.load_frame(kf_idx), _VIZ_W, _VIZ_H)
         kf_mask = _resize(video.load_mask(kf_idx), _VIZ_W, _VIZ_H,
                           interp=cv2.INTER_NEAREST)
 
-        # Inner loop — one target at a time so tqdm can tick per flow call
         all_results = []
-        tgt_bar = tqdm(
-            targets,
-            desc=f"  kf {kf_idx:>5}",
-            unit="tgt",
-            leave=False,
-            dynamic_ncols=True,
-            position=1,
-        )
-        for t_idx in tgt_bar:
-            tgt_bar.set_postfix_str(f"tgt={t_idx}  dist={abs(t_idx - kf_idx)}")
-
+        for t_idx in targets:
             tgt_frame = _resize(video.load_frame(t_idx), _VIZ_W, _VIZ_H)
             gt_mask = (
                 _resize(video.load_mask(t_idx), _VIZ_W, _VIZ_H,
@@ -199,25 +195,24 @@ def main() -> int:
             all_results.append(result)
 
             miou_v = result.iou["valid_only"]["miou"] if result.iou else float("nan")
-            tgt_bar.set_postfix_str(
-                f"tgt={t_idx}  dist={result.distance}  "
-                f"valid={result.valid_pct:.1f}%  mIoU={miou_v:.3f}"
+            tqdm.write(
+                f"       -> tgt={t_idx:>5}  dist={result.distance:>4}  "
+                f"valid={result.valid_pct:5.1f}%  mIoU={miou_v:.3f}",
+                file=sys.stdout,
             )
-
-        tgt_bar.close()
 
         # Write per-keyframe CSV
         rows = keyframe_rows(all_results, kf_idx, num_classes)
         write_csv(_csv_path(kf_idx), rows)
 
-        # Summary line for this keyframe (printed above the tqdm bar)
         mious = [r.iou["valid_only"]["miou"] for r in all_results
                  if r.iou and not np.isnan(r.iou["valid_only"]["miou"])]
         mean_miou = f"{np.mean(mious):.3f}" if mious else "n/a"
         elapsed = time.time() - t0
-        kf_bar.write(
-            f"[c1] kf={kf_idx:>5}  targets={targets}  "
-            f"mean mIoU(valid)={mean_miou}  elapsed={elapsed:.0f}s"
+        tqdm.write(
+            f"       mean mIoU(valid)={mean_miou}  saved keyframe_{kf_idx}.csv"
+            f"  elapsed={elapsed:.0f}s",
+            file=sys.stdout,
         )
 
     kf_bar.close()
