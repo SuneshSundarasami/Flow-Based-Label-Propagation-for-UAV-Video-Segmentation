@@ -38,6 +38,7 @@ import imageio.v3 as iio  # noqa: E402
 
 from config import load_config  # noqa: E402
 from data import RuralscapesVideo  # noqa: E402
+from eval import keyframe_rows, write_csv  # noqa: E402
 from flow import SeaRaftFlow  # noqa: E402
 from propagation import propagate_keyframe  # noqa: E402
 
@@ -237,42 +238,14 @@ def main() -> int:
             print(f"[prop] saved {path}")
 
     # ------------------------------------------------------------------
-    # Save per-keyframe CSV — format used by C1's full-video aggregation.
-    # Columns: keyframe, target_frame, distance, valid_pct,
-    #          miou_all, miou_valid, iou_class0, iou_class1, ...
+    # Save per-keyframe CSV — canonical schema used by C1's full-video
+    # aggregation (see src/eval/results_io.py).
     # ------------------------------------------------------------------
-    results_dir = _REPO_ROOT / cfg["paths"]["output_dir"] / "results"
-    results_dir.mkdir(parents=True, exist_ok=True)
-
-    kf_rows = []
-    for r in results:
-        iou_all = r.iou["all"] if r.iou else None
-        iou_valid = r.iou["valid_only"] if r.iou else None
-
-        def _fv(v):
-            return f"{v:.4f}" if v is not None and not math.isnan(v) else "nan"
-
-        row = {
-            "keyframe": kf_idx,
-            "target_frame": r.target_index,
-            "distance": r.distance,
-            "valid_pct": f"{r.valid_pct:.2f}",
-            "miou_all": _fv(iou_all["miou"] if iou_all else None),
-            "miou_valid": _fv(iou_valid["miou"] if iou_valid else None),
-        }
-        for c in range(num_classes):
-            row[f"iou_class{c}"] = _fv(
-                iou_valid["per_class"].get(c) if iou_valid else None
-            )
-        kf_rows.append(row)
-
+    kf_rows = keyframe_rows(results, kf_idx, num_classes)
     if kf_rows:
+        results_dir = _REPO_ROOT / cfg["paths"]["output_dir"] / "results"
         kf_csv = results_dir / f"keyframe_{kf_idx}.csv"
-        fieldnames = list(kf_rows[0].keys())
-        with open(kf_csv, "w", newline="") as fh:
-            writer = csv.DictWriter(fh, fieldnames=fieldnames)
-            writer.writeheader()
-            writer.writerows(kf_rows)
+        write_csv(kf_csv, kf_rows)
         print(f"[prop] saved {kf_csv}")
 
     # ------------------------------------------------------------------

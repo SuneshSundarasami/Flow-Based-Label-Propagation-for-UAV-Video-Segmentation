@@ -12,13 +12,28 @@ All computation stays on numpy/torch; no I/O or visualization here.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import List, Optional, Sequence
 
 import numpy as np
 
 from eval import compute_iou
 from flow import FlowEstimator
 from warp import compute_fb_mask, warp_mask
+
+
+def forward_targets(
+    annotated_indices: Sequence[int],
+    keyframe_index: int,
+    n_targets: int,
+) -> List[int]:
+    """Return up to *n_targets* annotated frame indices after *keyframe_index*.
+
+    Used by the full-video batched run (C1): each annotated keyframe is
+    propagated forward to its next few annotated neighbours, which are the
+    only frames with ground truth available for IoU evaluation.
+    """
+    later = [i for i in annotated_indices if i > keyframe_index]
+    return later[:n_targets]
 
 
 @dataclass

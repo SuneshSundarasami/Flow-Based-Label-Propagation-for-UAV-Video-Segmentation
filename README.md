@@ -22,9 +22,20 @@ data loads (142 matched frame/mask pairs, median annotation spacing 50 frames).
 | B2 | Forward–backward occlusion mask (`warp/occlusion.py`) | ☑ done — 5 tests |
 | B3 | mIoU + per-class IoU metric (`eval/metrics.py`) | ☑ done — 12 tests |
 | B4 | End-to-end single-keyframe propagation (`propagation/`) | ☑ done — 10 tests |
-| B5 | Config + CLI runner | ☑ done — 8 tests |
+| B5 | Config + CLI runner | ☑ done — 9 tests |
 
-All 49 unit tests pass (`conda run -n uav-flowprop pytest -q`).
+**Phase C (Scale, analyse, report) — C1 done; C2–C6 pending.**
+
+| WP | What | Status |
+|----|------|--------|
+| C1 | Full-video batched run (`scripts/run_full_video.py`) | ☑ done — 10 tests |
+| C2 | mIoU-vs-distance decay curve | ☐ pending |
+| C3 | Difficulty heatmap over timeline | ☐ pending |
+| C4 | Per-class IoU breakdown | ☐ pending |
+| C5 | Failure-case visualisations | ☐ pending |
+| C6 | Report write-up | ☐ pending |
+
+All 59 unit tests pass (`conda run -n uav-flowprop pytest -q`).
 
 ## Setup (conda)
 
@@ -55,15 +66,16 @@ src/                   # source packages (flat)
   config/              # default.yaml + loader (deep-merge overrides)
   flow/                # SEA-RAFT wrapper + FlowEstimator Protocol
   warp/                # mask_warp (B1) + occlusion FB check (B2)
-  eval/                # mIoU / per-class IoU (B3)
-  propagation/         # end-to-end single-keyframe pipeline (B4)
+  eval/                # mIoU / per-class IoU (B3) + results CSV schema (B5/C1)
+  propagation/         # single-keyframe pipeline (B4) + target scheduling (C1)
   data/                # Ruralscapes loader + class palette
   viz/                 # flow color-wheel visualization
 scripts/               # CLI entry points
   smoke_test_flow.py   # A2 flow smoke test
   inspect_data.py      # A3 data loader check
   check_warp.py        # B1/B2 visual 4-panel check
-  run_propagation.py   # B4 end-to-end run with mIoU table + CSV
+  run_propagation.py   # B4/B5 single-keyframe run with mIoU table + CSVs
+  run_full_video.py    # C1 full-video batched run -> all_pairs.csv
 tests/                 # pytest (pythonpath=src)
 third_party/SEA-RAFT/  # pinned git submodule (optical flow backbone)
 docs/                  # literature notes, write-ups
@@ -202,3 +214,26 @@ fair baseline comparison) and **valid-only** (additionally excludes FB-invalid
 pixels, the primary quality measure). Flow model: SEA-RAFT spring-L
 (12 refinement iterations) — roughly 3× lower EPE than SegProp's FlowNet2
 on Sintel clean.
+
+## Phase C: scale, analyse, report
+
+### C1 — full-video batched run
+
+Propagates from **every** annotated keyframe to its next N annotated frames and
+records per-pair IoU for the whole video:
+
+```bash
+conda run -n uav-flowprop python scripts/run_full_video.py
+```
+
+Each keyframe's results are cached to `outputs/results/keyframe_<K>.csv`; reruns
+skip keyframes already computed (use `--force` to recompute). All per-keyframe
+CSVs are concatenated, sorted by `(keyframe, distance)`, into:
+
+- `outputs/results/all_pairs.csv` — the complete full-video table
+  (`keyframe`, `target_frame`, `distance`, `valid_pct`, `miou_all`,
+  `miou_valid`, `iou_class0`, …) consumed by C2–C5.
+
+Useful flags: `--limit N` (process only the first N keyframes — handy for a
+quick partial run), `--n-targets` (annotated targets per keyframe),
+`--device cpu`, and `--config <YAML>`.

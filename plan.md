@@ -176,6 +176,16 @@ check.
   table; caching/checkpointing so reruns are cheap.
 - *Done when:* a complete results table (keyframe, target, distance, mIoU,
   per-class IoU) exists for the whole video.
+- *Verified (implementation):* `scripts/run_full_video.py` iterates every
+  annotated keyframe, propagating forward to the next `n_targets` annotated
+  frames via `propagation.forward_targets` + `propagate_keyframe`. Each
+  keyframe's results are cached to `outputs/results/keyframe_{k}.csv` and
+  skipped on rerun unless `--force`; `--limit N` allows partial runs. All
+  per-keyframe CSVs are concatenated (sorted by keyframe, distance) into
+  `outputs/results/all_pairs.csv` — the full-video table for C2–C5. The CSV
+  schema is centralised in `src/eval/results_io.py` (shared with B5). 10 unit
+  tests in `tests/test_c1.py` cover target scheduling, row schema/values,
+  CSV round-trip, and sorted concatenation. Real-data run requires GPU.
 
 **C2. mIoU-vs-distance decay curve** — *0.5 d*  *(MVP deliverable)*
 - Aggregate mIoU by absolute frame distance with mean ± spread band.
@@ -236,7 +246,7 @@ budget; show higher overall mIoU.
 | B3 | mIoU + per-class IoU metric | ☑ done; `eval/metrics.py` + 9 tests; confusion-matrix, valid-mask support |
 | B4 | End-to-end single-keyframe propagation | ☑ done; `propagation/propagate.py` + 10 tests; `run_propagation.py` ready |
 | B5 | Config + CLI runner | ☑ done; `default.yaml` data section + `--config` override + `keyframe_X.csv`; 9 tests |
-| C1 | Full-video batched run | ☐ todo |
+| C1 | Full-video batched run | ☑ done; `run_full_video.py` + caching + `all_pairs.csv`; 10 tests |
 | C2 | mIoU-vs-distance decay curve | ☐ todo |
 | C3 | Difficulty heatmap over timeline | ☐ todo |
 | C4 | Per-class IoU breakdown | ☐ todo |
