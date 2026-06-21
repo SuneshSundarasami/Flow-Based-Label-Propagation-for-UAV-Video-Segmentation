@@ -3,11 +3,11 @@
 For every annotated keyframe in the video, propagate its mask forward to the
 next N annotated frames (the only frames with ground truth for IoU) and record
 per-pair IoU. Each keyframe's results are cached to
-``outputs/<video>/propagation_results/keyframe_{k}.csv``; on rerun, keyframes
-whose CSV already exists are skipped (pass ``--force`` to recompute). All
-per-keyframe CSVs are then concatenated into
-``outputs/<video>/propagation_results/all_pairs.csv`` — the complete full-video
-table consumed by C2–C5.
+``outputs/results/<video>/propagation_results/keyframe_{k}.csv``; on rerun,
+keyframes whose CSV already exists are skipped (pass ``--force`` to recompute).
+All per-keyframe CSVs are then concatenated into
+``outputs/results/<video>/propagation_results/all_pairs.csv`` — the complete
+full-video table consumed by C2–C5.
 
 All settings default from ``src/config/default.yaml``; every flag is optional.
 
@@ -99,7 +99,13 @@ def main() -> int:
     args = ap.parse_args()
 
     video_name = _video_name(cfg, args.frame_glob)
-    results_dir = _REPO_ROOT / cfg["paths"]["output_dir"] / video_name / "propagation_results"
+    results_dir = (
+        _REPO_ROOT
+        / cfg["paths"]["output_dir"]
+        / "results"
+        / video_name
+        / "propagation_results"
+    )
     results_dir.mkdir(parents=True, exist_ok=True)
 
     # ------------------------------------------------------------------

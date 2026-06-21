@@ -147,7 +147,7 @@ check.
   targets, length-mismatch errors). `scripts/run_propagation.py` prints a
   distance / valid% / mIoU(all) / mIoU(valid) / per-class table and saves two
   CSVs (`results_all_pixels.csv`, `results_valid_pixels.csv`) and a
-  per-keyframe summary at `outputs/<video>/propagation_results/keyframe_{K}.csv` with columns
+  per-keyframe summary at `outputs/results/<video>/propagation_results/keyframe_{K}.csv` with columns
   `keyframe, target_frame, distance, valid_pct, miou_all, miou_valid,
   iou_class0, iou_class1, …` — the format C1 concatenates across keyframes.
   Real-data decreasing-mIoU sanity check is ready to run (requires GPU).
@@ -179,15 +179,15 @@ check.
 - *Verified (implementation):* `scripts/run_full_video.py` iterates every
   annotated keyframe, propagating forward to the next `n_targets` annotated
   frames via `propagation.forward_targets` + `propagate_keyframe`. Each
-  keyframe's results are cached to `outputs/<video>/propagation_results/keyframe_{k}.csv` and
+  keyframe's results are cached to `outputs/results/<video>/propagation_results/keyframe_{k}.csv` and
   skipped on rerun unless `--force`; `--limit N` allows partial runs. All
   per-keyframe CSVs are concatenated (sorted by keyframe, distance) into
-  `outputs/<video>/propagation_results/all_pairs.csv` — the full-video table
-  for C2–C5. For the default Ruralscapes clip, this resolves to
-  `outputs/DJI_0043/propagation_results/`. The CSV schema is centralised in
-  `src/eval/results_io.py` (shared with B5). 10 unit tests in `tests/test_c1.py`
-  cover target scheduling, row schema/values, CSV round-trip, and sorted
-  concatenation. Real-data run requires GPU.
+  `outputs/results/<video>/propagation_results/all_pairs.csv` — the full-video
+  table for C2–C5. For the default Ruralscapes clip, this resolves to
+  `outputs/results/DJI_0043/propagation_results/`. The CSV schema is centralised
+  in `src/eval/results_io.py` (shared with B5). 10 unit tests in
+  `tests/test_c1.py` cover target scheduling, row schema/values, CSV round-trip,
+  and sorted concatenation. Real-data run requires GPU.
 
 **C2. mIoU-vs-distance decay curve** — *0.5 d*  *(MVP deliverable)*
 - Aggregate mIoU by absolute frame distance with mean ± spread band.
