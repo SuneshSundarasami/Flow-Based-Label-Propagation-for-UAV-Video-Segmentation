@@ -191,6 +191,12 @@ check.
 
 **C2. mIoU-vs-distance decay curve** — *0.5 d*  *(MVP deliverable)*
 - Aggregate mIoU by absolute frame distance with mean ± spread band.
+- *Verified (implementation):* `scripts/analyze_decay.py` reads C1's
+  `all_pairs.csv`, groups rows by propagation distance, and writes
+  `outputs/results/<video>/analysis/decay_summary.csv` plus
+  `outputs/results/<video>/analysis/miou_decay.png`. The plot shows
+  mIoU(valid) with a ±1 std band and the mean FB-valid pixel percentage.
+  `tests/test_c2.py` covers sorted distance grouping and NaN handling.
 
 **C3. Difficulty heatmap over timeline** — *0.5 d*  *(Expected deliverable)*
 - 2D heatmap (keyframe × distance, or timeline × distance) of propagation quality.
@@ -249,7 +255,7 @@ budget; show higher overall mIoU.
 | B4 | End-to-end single-keyframe propagation | ☑ done; `propagation/propagate.py` + 10 tests; `run_propagation.py` ready |
 | B5 | Config + CLI runner | ☑ done; `default.yaml` data section + `--config` override + `keyframe_X.csv`; 9 tests |
 | C1 | Full-video batched run | ☑ done; `run_full_video.py` + video-scoped CSV cache + `all_pairs.csv`; 10 tests |
-| C2 | mIoU-vs-distance decay curve | ☐ todo |
+| C2 | mIoU-vs-distance decay curve | ☑ done; `analyze_decay.py` + summary CSV/plot; 2 tests |
 | C3 | Difficulty heatmap over timeline | ☐ todo |
 | C4 | Per-class IoU breakdown | ☐ todo |
 | C5 | Failure-case visualisations | ☐ todo |

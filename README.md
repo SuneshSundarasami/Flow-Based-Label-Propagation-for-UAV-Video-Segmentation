@@ -24,12 +24,12 @@ data loads (142 matched frame/mask pairs, median annotation spacing 50 frames).
 | B4 | End-to-end single-keyframe propagation (`propagation/`) | ☑ done — 10 tests |
 | B5 | Config + CLI runner | ☑ done — 9 tests |
 
-**Phase C (Scale, analyse, report) — C1 done; C2–C6 pending.**
+**Phase C (Scale, analyse, report) — C1-C2 done; C3–C6 pending.**
 
 | WP | What | Status |
 |----|------|--------|
 | C1 | Full-video batched run (`scripts/run_full_video.py`) | ☑ done — 10 tests |
-| C2 | mIoU-vs-distance decay curve | ☐ pending |
+| C2 | mIoU-vs-distance decay curve (`scripts/analyze_decay.py`) | ☑ done — 2 tests |
 | C3 | Difficulty heatmap over timeline | ☐ pending |
 | C4 | Per-class IoU breakdown | ☐ pending |
 | C5 | Failure-case visualisations | ☐ pending |
@@ -76,6 +76,7 @@ scripts/               # CLI entry points
   check_warp.py        # B1/B2 visual 4-panel check
   run_propagation.py   # B4/B5 single-keyframe run with mIoU table + CSVs
   run_full_video.py    # C1 full-video batched run -> all_pairs.csv
+  analyze_decay.py     # C2 mIoU-vs-distance summary + plot
 tests/                 # pytest (pythonpath=src)
 third_party/SEA-RAFT/  # pinned git submodule (optical flow backbone)
 docs/                  # literature notes, write-ups
@@ -241,3 +242,19 @@ per-keyframe CSVs are concatenated, sorted by `(keyframe, distance)`, into:
 Useful flags: `--limit N` (process only the first N keyframes — handy for a
 quick partial run), `--n-targets` (annotated targets per keyframe),
 `--device cpu`, and `--config <YAML>`.
+
+### C2 — mIoU-vs-distance decay curve
+
+Aggregates the C1 full-video table by propagation distance and writes a summary
+CSV plus a plot:
+
+```bash
+conda run -n uav-flowprop python scripts/analyze_decay.py
+```
+
+Default outputs for `DJI_0043`:
+
+- `outputs/results/DJI_0043/analysis/decay_summary.csv` — count, mean, std,
+  min, and max for `miou_valid`, `miou_all`, and `valid_pct` per distance.
+- `outputs/results/DJI_0043/analysis/miou_decay.png` — mIoU(valid) decay curve
+  with a ±1 std band and the mean FB-valid pixel percentage.
