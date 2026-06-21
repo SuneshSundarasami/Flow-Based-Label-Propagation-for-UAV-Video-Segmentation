@@ -11,8 +11,9 @@ All computation stays on numpy/torch; no I/O or visualization here.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import List, Optional, Sequence
+import time
+from dataclasses import dataclass, field
+from typing import Dict, List, Optional, Sequence
 
 import numpy as np
 
@@ -45,6 +46,7 @@ class FrameResult:
     valid_mask: np.ndarray    # (H, W) bool — True where flow is reliable
     valid_pct: float          # percentage of valid pixels
     iou: Optional[dict]       # compute_iou output, or None if no GT
+    timings: Dict[str, float] = field(default_factory=dict)  # step -> seconds
 
 
 def propagate_keyframe(
@@ -95,15 +97,33 @@ def propagate_keyframe(
     if gt_masks is not None and len(gt_masks) != len(target_frames):
         raise ValueError("gt_masks must have the same length as target_frames")
 
-    results: List[FrameResult] = []
-    for i, (tgt_frame, tgt_idx) in enumerate(zip(target_frames, target_indices)):
-        flow_bwd = model.estimate_flow(tgt_frame, keyframe_frame)
-        flow_fwd = model.estimate_flow(keyframe_frame, tgt_frame)
+    n = len(target_frames)
 
-        warped = warp_mask(keyframe_mask, flow_bwd, ignore_index=ignore_index)
-        valid = compute_fb_mask(flow_fwd, flow_bwd, threshold=fb_threshold)
+    # One batched call: first N slots are bwd (tgt→kf), last N are fwd (kf→tgt).
+    # Single GPU launch for all 2*N pairs simultaneously.
+    t0 = time.perf_counter()
+    all_flows = model.estimate_flow_batch(
+        [(tgt, keyframe_frame) for tgt in target_frames]
+        + [(keyframe_frame, tgt) for tgt in target_frames]
+    )
+    t_flow_total = time.perf_counter() - t0
+
+    flows_bwd = all_flows[:n]
+    flows_fwd = all_flows[n:]
+
+    results: List[FrameResult] = []
+    for i, tgt_idx in enumerate(target_indices):
+        t0 = time.perf_counter()
+        warped = warp_mask(keyframe_mask, flows_bwd[i], ignore_index=ignore_index)
+        t_warp = time.perf_counter() - t0
+
+        t0 = time.perf_counter()
+        valid = compute_fb_mask(flows_fwd[i], flows_bwd[i], threshold=fb_threshold)
+        t_fb = time.perf_counter() - t0
+
         valid_pct = 100.0 * float(valid.mean())
 
+        t0 = time.perf_counter()
         iou_result: Optional[dict] = None
         if (
             gt_masks is not None
@@ -117,6 +137,7 @@ def propagate_keyframe(
                 ignore_index=ignore_index,
                 valid_mask=valid,
             )
+        t_iou = time.perf_counter() - t0
 
         results.append(
             FrameResult(
@@ -126,6 +147,12 @@ def propagate_keyframe(
                 valid_mask=valid,
                 valid_pct=valid_pct,
                 iou=iou_result,
+                timings={
+                    "flow": t_flow_total / n,
+                    "warp": t_warp,
+                    "fb": t_fb,
+                    "iou": t_iou,
+                },
             )
         )
     return results

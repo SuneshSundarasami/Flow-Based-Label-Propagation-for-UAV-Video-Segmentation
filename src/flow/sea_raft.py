@@ -122,22 +122,40 @@ class SeaRaftFlow:
     @torch.no_grad()
     def estimate_flow(self, img1: np.ndarray, img2: np.ndarray) -> np.ndarray:
         """Estimate forward flow (img1 -> img2). Returns (H, W, 2) float32."""
+        return self.estimate_flow_batch([(img1, img2)])[0]
+
+    @torch.no_grad()
+    def estimate_flow_batch(
+        self,
+        pairs: "list[tuple[np.ndarray, np.ndarray]]",
+    ) -> "list[np.ndarray]":
+        """Estimate flow for multiple (img1, img2) pairs in one forward pass.
+
+        All pairs must have the same spatial dimensions. Returns a list of
+        (H, W, 2) float32 arrays in the same order as *pairs*.
+        """
         from utils.utils import InputPadder  # type: ignore
 
-        if img1.shape != img2.shape or img1.ndim != 3 or img1.shape[2] != 3:
-            raise ValueError(
-                f"expected matching (H, W, 3) RGB images, got {img1.shape} and "
-                f"{img2.shape}"
-            )
-        h, w = img1.shape[:2]
-        t1 = torch.from_numpy(img1).float().permute(2, 0, 1)[None].to(self.device)
-        t2 = torch.from_numpy(img2).float().permute(2, 0, 1)[None].to(self.device)
+        if not pairs:
+            return []
 
-        padder = InputPadder(t1.shape)
-        t1, t2 = padder.pad(t1, t2)
-        flow = self._calc_flow(t1, t2)
-        flow = padder.unpad(flow)[0]  # (2, H, W)
-        return flow.permute(1, 2, 0).cpu().numpy().astype(np.float32)[:h, :w]
+        h, w = pairs[0][0].shape[:2]
+        t1s = torch.stack(
+            [torch.from_numpy(a).float().permute(2, 0, 1) for a, _ in pairs]
+        ).to(self.device)  # (B, 3, H, W)
+        t2s = torch.stack(
+            [torch.from_numpy(b).float().permute(2, 0, 1) for _, b in pairs]
+        ).to(self.device)  # (B, 3, H, W)
+
+        padder = InputPadder(t1s.shape)
+        t1s, t2s = padder.pad(t1s, t2s)
+        flow = self._calc_flow(t1s, t2s)   # (B, 2, H_pad, W_pad)
+        flow = padder.unpad(flow)           # (B, 2, H, W)
+
+        return [
+            flow[i].permute(1, 2, 0).cpu().numpy().astype(np.float32)[:h, :w]
+            for i in range(len(pairs))
+        ]
 
 
 def estimate_flow(

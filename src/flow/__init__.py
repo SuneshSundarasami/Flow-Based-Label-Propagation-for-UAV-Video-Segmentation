@@ -19,5 +19,10 @@ class FlowEstimator(Protocol):
 
     def estimate_flow(self, img1: np.ndarray, img2: np.ndarray) -> np.ndarray: ...
 
+    def estimate_flow_batch(
+        self,
+        pairs: "list[tuple[np.ndarray, np.ndarray]]",
+    ) -> "list[np.ndarray]": ...
+
 
 __all__ = ["FlowEstimator", "SeaRaftFlow", "estimate_flow"]

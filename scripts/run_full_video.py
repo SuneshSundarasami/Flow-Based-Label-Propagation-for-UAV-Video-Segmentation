@@ -3,10 +3,11 @@
 For every annotated keyframe in the video, propagate its mask forward to the
 next N annotated frames (the only frames with ground truth for IoU) and record
 per-pair IoU. Each keyframe's results are cached to
-``outputs/results/keyframe_{k}.csv``; on rerun, keyframes whose CSV already
-exists are skipped (pass ``--force`` to recompute). All per-keyframe CSVs are
-then concatenated into ``outputs/results/all_pairs.csv`` — the complete
-full-video table consumed by C2–C5.
+``outputs/<video>/propagation_results/keyframe_{k}.csv``; on rerun, keyframes
+whose CSV already exists are skipped (pass ``--force`` to recompute). All
+per-keyframe CSVs are then concatenated into
+``outputs/<video>/propagation_results/all_pairs.csv`` — the complete full-video
+table consumed by C2–C5.
 
 All settings default from ``src/config/default.yaml``; every flag is optional.
 
@@ -27,6 +28,7 @@ import argparse
 import sys
 import time
 import warnings
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import cv2
@@ -66,7 +68,15 @@ def _resize(img: np.ndarray, w: int, h: int, interp=cv2.INTER_LINEAR) -> np.ndar
     return cv2.resize(img, (w, h), interpolation=interp)
 
 
+def _video_name(cfg: dict, frame_glob: str) -> str:
+    parts = Path(frame_glob).parts
+    if len(parts) >= 2 and parts[0] == "frames":
+        return parts[1]
+    return str(cfg.get("paths", {}).get("video", "video"))
+
+
 def main() -> int:
+    sys.stdout.reconfigure(line_buffering=True)
     cfg = _pre_load_config()
 
     ap = argparse.ArgumentParser(
@@ -88,7 +98,8 @@ def main() -> int:
                     help="Recompute keyframes even if their CSV already exists.")
     args = ap.parse_args()
 
-    results_dir = _REPO_ROOT / cfg["paths"]["output_dir"] / "results"
+    video_name = _video_name(cfg, args.frame_glob)
+    results_dir = _REPO_ROOT / cfg["paths"]["output_dir"] / video_name / "propagation_results"
     results_dir.mkdir(parents=True, exist_ok=True)
 
     # ------------------------------------------------------------------
@@ -157,6 +168,16 @@ def main() -> int:
     kf_bar = tqdm(todo, desc="keyframes", unit="kf",
                   dynamic_ncols=True, disable=not todo, file=sys.stdout)
 
+    def _load(idx: int):
+        """Load and resize one frame + its mask. Thread-safe (read-only)."""
+        frame = _resize(video.load_frame(idx), _VIZ_W, _VIZ_H)
+        mask = (
+            _resize(video.load_mask(idx), _VIZ_W, _VIZ_H,
+                    interp=cv2.INTER_NEAREST)
+            if video.has_mask(idx) else None
+        )
+        return frame, mask
+
     for kf_idx in kf_bar:
         targets = forward_targets(ann, kf_idx, args.n_targets)
         if not targets:
@@ -166,37 +187,49 @@ def main() -> int:
         kf_bar.set_postfix_str(f"kf={kf_idx}")
         tqdm.write(f"[c1] kf={kf_idx:>5}  targets={targets}", file=sys.stdout)
 
-        # Load keyframe once
-        kf_frame = _resize(video.load_frame(kf_idx), _VIZ_W, _VIZ_H)
-        kf_mask = _resize(video.load_mask(kf_idx), _VIZ_W, _VIZ_H,
-                          interp=cv2.INTER_NEAREST)
+        # Load kf + all target frames/masks in parallel threads.
+        # OpenCV decode releases the GIL, so threads genuinely run concurrently.
+        t0_io = time.time()
+        with ThreadPoolExecutor(max_workers=len(targets) + 1) as io_pool:
+            loaded = list(io_pool.map(_load, [kf_idx] + targets))
+        t_io = time.time() - t0_io
 
-        all_results = []
-        for t_idx in targets:
-            tgt_frame = _resize(video.load_frame(t_idx), _VIZ_W, _VIZ_H)
-            gt_mask = (
-                _resize(video.load_mask(t_idx), _VIZ_W, _VIZ_H,
-                        interp=cv2.INTER_NEAREST)
-                if video.has_mask(t_idx) else None
+        kf_frame, kf_mask = loaded[0]
+        tgt_frames    = [loaded[i + 1][0] for i in range(len(targets))]
+        gt_masks_list = [loaded[i + 1][1] for i in range(len(targets))]
+
+        # One propagate call — batches both flow directions in 2 GPU passes
+        t0_prop = time.time()
+        all_results = propagate_keyframe(
+            keyframe_mask=kf_mask,
+            keyframe_frame=kf_frame,
+            target_frames=tgt_frames,
+            target_indices=targets,
+            keyframe_index=kf_idx,
+            model=model,
+            fb_threshold=fb_threshold,
+            ignore_index=ignore_index,
+            gt_masks=gt_masks_list,
+            num_classes=num_classes,
+        )
+        t_prop = time.time() - t0_prop
+
+        if all_results and all_results[0].timings:
+            tm0 = all_results[0].timings
+            n_tgt = len(all_results)
+            t_flow = tm0["flow"] * n_tgt
+            t_post = t_prop - t_flow
+            tqdm.write(
+                f"       [io={t_io:.2f}s  "
+                f"flow={t_flow:.2f}s (1 pass, batch={n_tgt * 2})  "
+                f"warp/fb/iou={t_post:.3f}s]",
+                file=sys.stdout,
             )
 
-            result = propagate_keyframe(
-                keyframe_mask=kf_mask,
-                keyframe_frame=kf_frame,
-                target_frames=[tgt_frame],
-                target_indices=[t_idx],
-                keyframe_index=kf_idx,
-                model=model,
-                fb_threshold=fb_threshold,
-                ignore_index=ignore_index,
-                gt_masks=[gt_mask],
-                num_classes=num_classes,
-            )[0]
-            all_results.append(result)
-
+        for result in all_results:
             miou_v = result.iou["valid_only"]["miou"] if result.iou else float("nan")
             tqdm.write(
-                f"       -> tgt={t_idx:>5}  dist={result.distance:>4}  "
+                f"       -> tgt={result.target_index:>5}  dist={result.distance:>4}  "
                 f"valid={result.valid_pct:5.1f}%  mIoU={miou_v:.3f}",
                 file=sys.stdout,
             )

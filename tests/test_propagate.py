@@ -15,6 +15,9 @@ class _ZeroFlow:
     def estimate_flow(self, img1: np.ndarray, img2: np.ndarray) -> np.ndarray:
         return np.zeros((*img1.shape[:2], 2), dtype=np.float32)
 
+    def estimate_flow_batch(self, pairs):
+        return [self.estimate_flow(a, b) for a, b in pairs]
+
 
 class _ShiftFlow:
     """Stub that shifts by +1 in x for fwd, -1 for bwd (inverse pair)."""
@@ -25,6 +28,9 @@ class _ShiftFlow:
         flow = np.zeros((*img1.shape[:2], 2), dtype=np.float32)
         flow[..., 0] = self._shift
         return flow
+
+    def estimate_flow_batch(self, pairs):
+        return [self.estimate_flow(a, b) for a, b in pairs]
 
 
 def _frame(h=4, w=4) -> np.ndarray:

@@ -187,7 +187,7 @@ the terminal, and saves 4-panel images plus two CSVs:
 
 - `outputs/propagation/results_all_pixels.csv` — IoU over all non-ignored pixels
 - `outputs/propagation/results_valid_pixels.csv` — IoU restricted to FB-valid pixels
-- `outputs/results/keyframe_<K>.csv` — per-pair table (`keyframe`, `target_frame`, `distance`, `valid_pct`, `miou_all`, `miou_valid`, `iou_class0`, `iou_class1`, …); this is the format C1 aggregates across all keyframes
+- `outputs/<video>/propagation_results/keyframe_<K>.csv` — per-pair table (`keyframe`, `target_frame`, `distance`, `valid_pct`, `miou_all`, `miou_valid`, `iou_class0`, `iou_class1`, …); this is the format C1 aggregates across all keyframes
 
 All settings come from `src/config/default.yaml`, so a bare command is enough:
 
@@ -223,14 +223,18 @@ Propagates from **every** annotated keyframe to its next N annotated frames and
 records per-pair IoU for the whole video:
 
 ```bash
-conda run -n uav-flowprop python scripts/run_full_video.py
+conda run --no-capture-output -n uav-flowprop python scripts/run_full_video.py
 ```
 
-Each keyframe's results are cached to `outputs/results/keyframe_<K>.csv`; reruns
-skip keyframes already computed (use `--force` to recompute). All per-keyframe
-CSVs are concatenated, sorted by `(keyframe, distance)`, into:
+`--no-capture-output` is required so that progress lines appear in real time
+(without it, `conda run` buffers stdout and nothing shows until the process
+exits). Each keyframe's results are cached to
+`outputs/<video>/propagation_results/keyframe_<K>.csv`; reruns skip keyframes
+already computed (use `--force` to recompute). For the default config this is
+`outputs/DJI_0043/propagation_results/keyframe_<K>.csv`. All per-keyframe CSVs
+are concatenated, sorted by `(keyframe, distance)`, into:
 
-- `outputs/results/all_pairs.csv` — the complete full-video table
+- `outputs/<video>/propagation_results/all_pairs.csv` — the complete full-video table
   (`keyframe`, `target_frame`, `distance`, `valid_pct`, `miou_all`,
   `miou_valid`, `iou_class0`, …) consumed by C2–C5.
 

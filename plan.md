@@ -147,7 +147,7 @@ check.
   targets, length-mismatch errors). `scripts/run_propagation.py` prints a
   distance / valid% / mIoU(all) / mIoU(valid) / per-class table and saves two
   CSVs (`results_all_pixels.csv`, `results_valid_pixels.csv`) and a
-  per-keyframe summary at `outputs/results/keyframe_{K}.csv` with columns
+  per-keyframe summary at `outputs/<video>/propagation_results/keyframe_{K}.csv` with columns
   `keyframe, target_frame, distance, valid_pct, miou_all, miou_valid,
   iou_class0, iou_class1, …` — the format C1 concatenates across keyframes.
   Real-data decreasing-mIoU sanity check is ready to run (requires GPU).
@@ -179,13 +179,15 @@ check.
 - *Verified (implementation):* `scripts/run_full_video.py` iterates every
   annotated keyframe, propagating forward to the next `n_targets` annotated
   frames via `propagation.forward_targets` + `propagate_keyframe`. Each
-  keyframe's results are cached to `outputs/results/keyframe_{k}.csv` and
+  keyframe's results are cached to `outputs/<video>/propagation_results/keyframe_{k}.csv` and
   skipped on rerun unless `--force`; `--limit N` allows partial runs. All
   per-keyframe CSVs are concatenated (sorted by keyframe, distance) into
-  `outputs/results/all_pairs.csv` — the full-video table for C2–C5. The CSV
-  schema is centralised in `src/eval/results_io.py` (shared with B5). 10 unit
-  tests in `tests/test_c1.py` cover target scheduling, row schema/values,
-  CSV round-trip, and sorted concatenation. Real-data run requires GPU.
+  `outputs/<video>/propagation_results/all_pairs.csv` — the full-video table
+  for C2–C5. For the default Ruralscapes clip, this resolves to
+  `outputs/DJI_0043/propagation_results/`. The CSV schema is centralised in
+  `src/eval/results_io.py` (shared with B5). 10 unit tests in `tests/test_c1.py`
+  cover target scheduling, row schema/values, CSV round-trip, and sorted
+  concatenation. Real-data run requires GPU.
 
 **C2. mIoU-vs-distance decay curve** — *0.5 d*  *(MVP deliverable)*
 - Aggregate mIoU by absolute frame distance with mean ± spread band.
@@ -246,7 +248,7 @@ budget; show higher overall mIoU.
 | B3 | mIoU + per-class IoU metric | ☑ done; `eval/metrics.py` + 9 tests; confusion-matrix, valid-mask support |
 | B4 | End-to-end single-keyframe propagation | ☑ done; `propagation/propagate.py` + 10 tests; `run_propagation.py` ready |
 | B5 | Config + CLI runner | ☑ done; `default.yaml` data section + `--config` override + `keyframe_X.csv`; 9 tests |
-| C1 | Full-video batched run | ☑ done; `run_full_video.py` + caching + `all_pairs.csv`; 10 tests |
+| C1 | Full-video batched run | ☑ done; `run_full_video.py` + video-scoped CSV cache + `all_pairs.csv`; 10 tests |
 | C2 | mIoU-vs-distance decay curve | ☐ todo |
 | C3 | Difficulty heatmap over timeline | ☐ todo |
 | C4 | Per-class IoU breakdown | ☐ todo |
