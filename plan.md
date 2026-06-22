@@ -200,6 +200,13 @@ check.
 
 **C3. Difficulty heatmap over timeline** — *0.5 d*  *(Expected deliverable)*
 - 2D heatmap (keyframe × distance, or timeline × distance) of propagation quality.
+- *Verified (implementation):* `scripts/analyze_heatmap.py` reads C1's
+  `all_pairs.csv`, builds a keyframe × distance matrix using `miou_valid` by
+  default, and writes `outputs/results/<video>/analysis/difficulty_heatmap_matrix.csv`
+  plus `outputs/results/<video>/analysis/difficulty_heatmap.png`. `--metric`
+  can switch the heatmap to `miou_all` or `valid_pct`. `tests/test_c3.py`
+  covers axis sorting, missing cells, duplicate-cell averaging, NaN handling,
+  and CSV output.
 
 **C4. Per-class IoU breakdown** — *0.5 d*  *(Expected deliverable)*
 - Which classes propagate best/worst, with interpretation.
@@ -256,7 +263,7 @@ budget; show higher overall mIoU.
 | B5 | Config + CLI runner | ☑ done; `default.yaml` data section + `--config` override + `keyframe_X.csv`; 9 tests |
 | C1 | Full-video batched run | ☑ done; `run_full_video.py` + video-scoped CSV cache + `all_pairs.csv`; 10 tests |
 | C2 | mIoU-vs-distance decay curve | ☑ done; `analyze_decay.py` + summary CSV/plot; 2 tests |
-| C3 | Difficulty heatmap over timeline | ☐ todo |
+| C3 | Difficulty heatmap over timeline | ☑ done; `analyze_heatmap.py` + matrix CSV/plot; 3 tests |
 | C4 | Per-class IoU breakdown | ☐ todo |
 | C5 | Failure-case visualisations | ☐ todo |
 | C6 | Report write-up | ☐ todo |

@@ -24,13 +24,13 @@ data loads (142 matched frame/mask pairs, median annotation spacing 50 frames).
 | B4 | End-to-end single-keyframe propagation (`propagation/`) | ☑ done — 10 tests |
 | B5 | Config + CLI runner | ☑ done — 9 tests |
 
-**Phase C (Scale, analyse, report) — C1-C2 done; C3–C6 pending.**
+**Phase C (Scale, analyse, report) — C1-C3 done; C4–C6 pending.**
 
 | WP | What | Status |
 |----|------|--------|
 | C1 | Full-video batched run (`scripts/run_full_video.py`) | ☑ done — 10 tests |
 | C2 | mIoU-vs-distance decay curve (`scripts/analyze_decay.py`) | ☑ done — 2 tests |
-| C3 | Difficulty heatmap over timeline | ☐ pending |
+| C3 | Difficulty heatmap over timeline (`scripts/analyze_heatmap.py`) | ☑ done — 3 tests |
 | C4 | Per-class IoU breakdown | ☐ pending |
 | C5 | Failure-case visualisations | ☐ pending |
 | C6 | Report write-up | ☐ pending |
@@ -77,6 +77,7 @@ scripts/               # CLI entry points
   run_propagation.py   # B4/B5 single-keyframe run with mIoU table + CSVs
   run_full_video.py    # C1 full-video batched run -> all_pairs.csv
   analyze_decay.py     # C2 mIoU-vs-distance summary + plot
+  analyze_heatmap.py   # C3 keyframe x distance difficulty heatmap
 tests/                 # pytest (pythonpath=src)
 third_party/SEA-RAFT/  # pinned git submodule (optical flow backbone)
 docs/                  # literature notes, write-ups
@@ -258,3 +259,21 @@ Default outputs for `DJI_0043`:
   min, and max for `miou_valid`, `miou_all`, and `valid_pct` per distance.
 - `outputs/results/DJI_0043/analysis/miou_decay.png` — mIoU(valid) decay curve
   with a ±1 std band and the mean FB-valid pixel percentage.
+
+### C3 — difficulty heatmap over timeline
+
+Builds a keyframe-by-distance heatmap from the C1 table:
+
+```bash
+conda run -n uav-flowprop python scripts/analyze_heatmap.py
+```
+
+Default outputs for `DJI_0043`:
+
+- `outputs/results/DJI_0043/analysis/difficulty_heatmap_matrix.csv` — matrix
+  with keyframes as rows and propagation distances as columns.
+- `outputs/results/DJI_0043/analysis/difficulty_heatmap.png` — timeline
+  heatmap of `miou_valid`, where darker/low-value cells mark difficult
+  propagation intervals.
+
+Use `--metric miou_all` or `--metric valid_pct` to plot a different C1 metric.
