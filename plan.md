@@ -210,10 +210,24 @@ check.
 
 **C4. Per-class IoU breakdown** — *0.5 d*  *(Expected deliverable)*
 - Which classes propagate best/worst, with interpretation.
+- *Verified (implementation):* `scripts/analyze_per_class.py` reads C1's
+  `all_pairs.csv`, summarizes valid-only `iou_classN` columns using the
+  Ruralscapes class names, and writes
+  `outputs/results/<video>/analysis/per_class_iou.csv` plus
+  `outputs/results/<video>/analysis/per_class_iou.png`. `tests/test_c4.py`
+  covers class-name mapping, sorted ranking, summary statistics, and NaN
+  handling.
 
 **C5. Failure-case visualisations** — *0.5 d*  *(MVP deliverable)*
 - ≥2 worst pairs; side-by-side frame / warped mask / GT / error map with written
   explanation tied to motion/parallax.
+- *Verified (implementation):* `scripts/visualize_failures.py` selects the
+  lowest-scoring C1 rows by `miou_valid` after filtering near-empty valid
+  regions (`--min-valid-pct`, default 5%), recomputes only those pairs, and
+  writes `outputs/results/<video>/failure_cases/failure_cases.md` plus
+  side-by-side PNGs showing keyframe GT, warped target, target GT, and an
+  error/validity map. `tests/test_c5.py` covers deterministic worst-pair
+  selection, alternate metric ranking, and valid-pixel filtering.
 
 **C6. Report write-up** — *continuous, ~2 d total*
 - Intro, method, results, discussion, guidelines for reliable propagation distance.
@@ -264,8 +278,8 @@ budget; show higher overall mIoU.
 | C1 | Full-video batched run | ☑ done; `run_full_video.py` + video-scoped CSV cache + `all_pairs.csv`; 10 tests |
 | C2 | mIoU-vs-distance decay curve | ☑ done; `analyze_decay.py` + summary CSV/plot; 2 tests |
 | C3 | Difficulty heatmap over timeline | ☑ done; `analyze_heatmap.py` + matrix CSV/plot; 3 tests |
-| C4 | Per-class IoU breakdown | ☐ todo |
-| C5 | Failure-case visualisations | ☐ todo |
+| C4 | Per-class IoU breakdown | ☑ done; `analyze_per_class.py` + CSV/bar plot; 2 tests |
+| C5 | Failure-case visualisations | ☑ done; `visualize_failures.py` + worst-pair panels; 2 tests |
 | C6 | Report write-up | ☐ todo |
 | D1–D3 | Optional: content-aware keyframe selection | ☐ optional |
 
