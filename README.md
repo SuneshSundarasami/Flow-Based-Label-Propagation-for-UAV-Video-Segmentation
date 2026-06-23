@@ -80,8 +80,13 @@ scripts/               # CLI entry points
   analyze_heatmap.py   # C3 keyframe x distance difficulty heatmap
   analyze_per_class.py # C4 per-class IoU breakdown
   visualize_failures.py # C5 worst-pair visualizations
+  prepare_segprop_sampled.py # SegProp sampled-frame label prep
+  generate_segprop_flows.py  # SegProp H5 flows via SEA-RAFT
+  run_segprop_sampled.py     # SegProp vote baseline
+  compare_segprop_sampled.py # compare SegProp vs matching C1 rows
 tests/                 # pytest (pythonpath=src)
 third_party/SEA-RAFT/  # pinned git submodule (optical flow backbone)
+third_party/segprop/   # SegProp baseline code
 docs/                  # literature notes, write-ups
 data/                  # dataset goes here, OUTSIDE src (git-ignored)
 outputs/               # run artifacts (git-ignored)
@@ -315,3 +320,27 @@ By default C5 ignores pairs with fewer than 5% FB-valid pixels so the selected
 cases are visually meaningful. Use `--n 4` to inspect more cases,
 `--metric miou_all` to rank by all-pixel mIoU, or `--min-valid-pct 0` to include
 near-empty valid regions.
+
+### SegProp sampled baseline
+
+The SegProp repository is included under `third_party/segprop`. The first
+baseline comparison uses the same 142 annotated `DJI_0043` frames as C1,
+re-indexed densely so SegProp can run on sampled-frame steps. Even sampled
+frames are treated as source labels and odd sampled frames as held-out
+evaluation labels.
+
+```bash
+conda run -n uav-flowprop python scripts/prepare_segprop_sampled.py
+conda run --no-capture-output -n uav-flowprop python scripts/generate_segprop_flows.py
+conda run --no-capture-output -n uav-flowprop python scripts/run_segprop_sampled.py
+conda run -n uav-flowprop python scripts/compare_segprop_sampled.py
+```
+
+This is a sampled-frame SegProp-vote baseline using SEA-RAFT H5 flows, not the
+paper's original dense-video FlowNet2 setup. Current `DJI_0043` result:
+
+- Ours, matching even→odd C1 rows: `miou_all=0.7396`, `miou_valid=0.7551`
+- SegProp vote sampled baseline: `fmeasure=0.8023`, `miou_all=0.7058`
+
+The comparison table is written to
+`outputs/results/DJI_0043/analysis/segprop_sampled_comparison.csv`.

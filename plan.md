@@ -243,6 +243,12 @@ check.
 **D2.** Lightweight content-aware keyframe selector recommending *k* frames to annotate.
 **D3.** Compare against fixed-interval (SegProp) baseline at equal annotation
 budget; show higher overall mIoU.
+- *Initial baseline implemented:* cloned `vlicaret/segprop` under
+  `third_party/segprop`; added sampled-frame prep, SEA-RAFT H5 flow generation,
+  SegProp vote runner, and comparison script. On `DJI_0043` sampled even→odd
+  labels, our matching C1 rows give `miou_all=0.7396`, `miou_valid=0.7551`;
+  SegProp vote with SEA-RAFT H5 flows gives `fmeasure=0.8023`, `miou_all=0.7058`.
+  This is a sampled-frame baseline, not the paper's original dense FlowNet2 run.
 
 ---
 
@@ -281,6 +287,6 @@ budget; show higher overall mIoU.
 | C4 | Per-class IoU breakdown | ☑ done; `analyze_per_class.py` + CSV/bar plot; 2 tests |
 | C5 | Failure-case visualisations | ☑ done; `visualize_failures.py` + worst-pair panels; 2 tests |
 | C6 | Report write-up | ☐ todo |
-| D1–D3 | Optional: content-aware keyframe selection | ☐ optional |
+| D1–D3 | Optional: content-aware keyframe selection / SegProp baseline | ◐ partial; sampled SegProp vote comparison added |
 
 Status legend: ☐ todo · ◐ in progress · ☑ done
