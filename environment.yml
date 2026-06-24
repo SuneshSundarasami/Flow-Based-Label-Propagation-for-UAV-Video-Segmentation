@@ -13,7 +13,6 @@ dependencies:
   - opencv
   - matplotlib
   - scipy
-  - h5py
   - tqdm
   - pyyaml
   - pandas
