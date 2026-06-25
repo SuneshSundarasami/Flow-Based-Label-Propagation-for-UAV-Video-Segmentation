@@ -35,7 +35,7 @@ data loads (142 matched frame/mask pairs, median annotation spacing 50 frames).
 | C5 | Failure-case visualisations (`scripts/visualize_failures.py`) | ☑ done — 2 tests |
 | C6 | Report write-up | ☐ pending |
 
-All 69 unit tests pass (`conda run -n uav-flowprop pytest -q`).
+All 73 unit tests pass (`conda run -n uav-flowprop pytest -q`).
 
 ## Setup (conda)
 
@@ -80,6 +80,7 @@ scripts/               # CLI entry points
   analyze_heatmap.py   # C3 keyframe x distance difficulty heatmap
   analyze_per_class.py # C4 per-class IoU breakdown
   visualize_failures.py # C5 worst-pair visualizations
+  prepare_segprop_dataset.py # SegProp-format Ruralscapes labels/frames
 tests/                 # pytest (pythonpath=src)
 third_party/SEA-RAFT/  # pinned git submodule (optical flow backbone)
 docs/                  # literature notes, write-ups
@@ -106,6 +107,40 @@ python scripts/export_labelled_frames.py \
     --labels data/Ruralscapes/labels/manual_labels/DJI_0043 \
     --out data/Ruralscapes/frames/DJI_0043
 ```
+
+## SegProp paper reproduction prep
+
+The first reproduction step is preparing Ruralscapes in the format expected by
+SegProp-style code: RGB manual labels become one-hot `.npz` files with `map` and
+`votes` arrays, split by annotation ordinal into `train_even` and `train_odd`.
+By default the script uses the official training split file and writes to
+`outputs/segprop_paper_repro/`.
+
+```bash
+conda run -n uav-flowprop python scripts/prepare_segprop_dataset.py --steps labels
+```
+
+To also export dense 2K frames from the MP4 videos, request both steps:
+
+```bash
+conda run -n uav-flowprop python scripts/prepare_segprop_dataset.py \
+    --steps labels frames
+```
+
+Output layout:
+
+```text
+outputs/segprop_paper_repro/
+  labels_2k/
+    all/<video>/<video>_<frame>.npz
+    train_even/<video>/<video>_<frame>.npz
+    train_odd/<video>/<video>_<frame>.npz
+  frames_2k/<video>/<video>_<frame>.jpg
+  metadata/<video>_labels.csv
+```
+
+This only prepares data; FlowNet2, SegProp propagation, filtering, and Table 1
+metric reproduction are separate steps.
 
 ## Phase A: verifying the foundation
 

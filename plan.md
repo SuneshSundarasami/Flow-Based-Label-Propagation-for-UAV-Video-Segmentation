@@ -239,6 +239,19 @@ check.
 
 ### Phase D — Optional extension  *(maps to proposal §5; only if ahead of schedule)*
 
+**D0. SegProp-format dataset preparation** — *implemented; full split run pending*
+- Convert Ruralscapes manual labels to SegProp-style one-hot `.npz` files with
+  `map` and `votes` arrays.
+- Split the official training labels into `train_even` / `train_odd` by
+  annotation ordinal and write per-video metadata CSVs.
+- Optionally export dense 2K frames from the MP4 videos.
+- *Done when:* the prep script runs on the training split and produces
+  `outputs/segprop_paper_repro/labels_2k/`, optional `frames_2k/`, and
+  `metadata/`.
+- *Verified so far:* unit tests cover label naming, RGB palette lookup,
+  one-hot encoding, TrainEven/TrainOdd output, and metadata; a real-data smoke
+  run on `DJI_0043` prepared 142 labels at small resolution.
+
 **D1.** Use C1's per-pair scores to label which intervals are hard to propagate.
 **D2.** Lightweight content-aware keyframe selector recommending *k* frames to annotate.
 **D3.** Compare against fixed-interval (SegProp) baseline at equal annotation
