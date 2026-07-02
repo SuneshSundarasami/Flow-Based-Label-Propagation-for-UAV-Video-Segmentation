@@ -44,11 +44,8 @@ sys.path.insert(0, str(_REPO_ROOT / "src"))
 from config import load_config  # noqa: E402
 from data import RuralscapesVideo  # noqa: E402
 from eval import concat_csvs, keyframe_rows, write_csv  # noqa: E402
-from flow import SeaRaftFlow  # noqa: E402
+from flow import FlowNet2Flow, SeaRaftFlow  # noqa: E402
 from propagation import forward_targets, propagate_keyframe  # noqa: E402
-
-_VIZ_W, _VIZ_H = 960, 540
-
 
 def _pre_load_config(argv=None) -> dict:
     if argv is None:
@@ -68,10 +65,31 @@ def _resize(img: np.ndarray, w: int, h: int, interp=cv2.INTER_LINEAR) -> np.ndar
     return cv2.resize(img, (w, h), interpolation=interp)
 
 
+def _maybe_resize(
+    img: np.ndarray,
+    width: int | None,
+    height: int | None,
+    interp=cv2.INTER_LINEAR,
+) -> np.ndarray:
+    if width is None or height is None:
+        return img
+    return _resize(img, width, height, interp=interp)
+
+
+def _matches_mod(index: int, mod: int | None, offset: int) -> bool:
+    if mod is None:
+        return True
+    return index % mod == offset
+
+
 def _video_name(cfg: dict, frame_glob: str) -> str:
     parts = Path(frame_glob).parts
     if len(parts) >= 2 and parts[0] == "frames":
         return parts[1]
+    if "frames_2k" in parts:
+        idx = parts.index("frames_2k")
+        if len(parts) > idx + 1:
+            return parts[idx + 1]
     return str(cfg.get("paths", {}).get("video", "video"))
 
 
@@ -89,16 +107,38 @@ def main() -> int:
     ap.add_argument("--mask-glob", default=cfg["data"]["mask_glob"])
     ap.add_argument("--mask-format", default=cfg["data"]["mask_format"],
                     choices=["color", "indexed"])
+    ap.add_argument("--result-name", default=None,
+                    help="Name under outputs/results/. Defaults to the video inferred from --frame-glob.")
     ap.add_argument("--n-targets", type=int, default=cfg["propagation"]["n_targets"],
                     help="Annotated frames after each keyframe to evaluate. [default: %(default)s]")
     ap.add_argument("--device", default=cfg["flow"]["device"])
+    ap.add_argument("--flow-backend", default=cfg["flow"].get("backend", "sea_raft"),
+                    choices=["sea_raft", "flownet2"],
+                    help="Optical-flow model used by the direct propagation method.")
+    ap.add_argument("--resize-width", type=int, default=960,
+                    help="Resize frames/masks to this width before flow. Use with --resize-height.")
+    ap.add_argument("--resize-height", type=int, default=540,
+                    help="Resize frames/masks to this height before flow. Use with --resize-width.")
+    ap.add_argument("--no-resize", action="store_true",
+                    help="Run at source frame/mask resolution.")
+    ap.add_argument("--keyframe-mod", type=int, default=None,
+                    help="Only use annotated keyframes where index %% MOD == --keyframe-offset.")
+    ap.add_argument("--keyframe-offset", type=int, default=0)
+    ap.add_argument("--target-mod", type=int, default=None,
+                    help="Only evaluate targets where index %% MOD == --target-offset.")
+    ap.add_argument("--target-offset", type=int, default=0)
     ap.add_argument("--limit", type=int, default=None,
                     help="Process only the first N keyframes (quick partial run).")
     ap.add_argument("--force", action="store_true",
                     help="Recompute keyframes even if their CSV already exists.")
     args = ap.parse_args()
 
-    video_name = _video_name(cfg, args.frame_glob)
+    video_name = args.result_name or _video_name(cfg, args.frame_glob)
+    resize_w = None if args.no_resize else args.resize_width
+    resize_h = None if args.no_resize else args.resize_height
+    if (resize_w is None) != (resize_h is None):
+        raise ValueError("--resize-width and --resize-height must be used together")
+
     results_dir = (
         _REPO_ROOT
         / cfg["paths"]["output_dir"]
@@ -124,7 +164,7 @@ def main() -> int:
         return 1
 
     num_classes = video.num_classes
-    keyframes = ann[:-1]
+    keyframes = [i for i in ann[:-1] if _matches_mod(i, args.keyframe_mod, args.keyframe_offset)]
     if args.limit is not None:
         keyframes = keyframes[: args.limit]
 
@@ -146,8 +186,12 @@ def main() -> int:
     print(f"[c1] n_targets    : {args.n_targets} per keyframe")
     print(f"[c1] classes      : {num_classes}  fb_threshold={fb_threshold}px  ignore={ignore_index}")
     print(f"[c1] output dir   : {results_dir}")
+    print(f"[c1] resize       : {'source resolution' if args.no_resize else f'{resize_w}x{resize_h}'}")
+    print(f"[c1] key filter   : {f'idx % {args.keyframe_mod} == {args.keyframe_offset}' if args.keyframe_mod else 'all annotated'}")
+    print(f"[c1] target filter: {f'idx % {args.target_mod} == {args.target_offset}' if args.target_mod else 'all annotated'}")
     print(f"[c1] cache        : {n_cached} already done, {len(todo)} to compute  (--force={args.force})")
     print(f"[c1] device       : {args.device}")
+    print(f"[c1] flow backend : {args.flow_backend}")
     print()
 
     # ------------------------------------------------------------------
@@ -155,14 +199,19 @@ def main() -> int:
     # ------------------------------------------------------------------
     model = None
     if todo:
-        print(f"[c1] loading SEA-RAFT ({cfg['flow']['model_cfg']}) on {args.device} ...")
         t_load = time.time()
-        model = SeaRaftFlow(
-            cfg["flow"]["model_cfg"],
-            checkpoint=str(_REPO_ROOT / cfg["paths"]["sea_raft_checkpoint"]),
-            iters=cfg["flow"]["iters"],
-            device=args.device,
-        )
+        if args.flow_backend == "sea_raft":
+            print(f"[c1] loading SEA-RAFT ({cfg['flow']['model_cfg']}) on {args.device} ...")
+            model = SeaRaftFlow(
+                cfg["flow"]["model_cfg"],
+                checkpoint=str(_REPO_ROOT / cfg["paths"]["sea_raft_checkpoint"]),
+                iters=cfg["flow"]["iters"],
+                device=args.device,
+            )
+        else:
+            checkpoint = _REPO_ROOT / cfg["paths"]["flownet2_checkpoint"]
+            print(f"[c1] loading FlowNet2 ({checkpoint}) on {args.device} ...")
+            model = FlowNet2Flow(checkpoint=checkpoint, device=args.device)
         print(f"[c1] model loaded in {time.time() - t_load:.1f}s\n")
 
     # ------------------------------------------------------------------
@@ -176,16 +225,19 @@ def main() -> int:
 
     def _load(idx: int):
         """Load and resize one frame + its mask. Thread-safe (read-only)."""
-        frame = _resize(video.load_frame(idx), _VIZ_W, _VIZ_H)
+        frame = _maybe_resize(video.load_frame(idx), resize_w, resize_h)
         mask = (
-            _resize(video.load_mask(idx), _VIZ_W, _VIZ_H,
-                    interp=cv2.INTER_NEAREST)
+            _maybe_resize(video.load_mask(idx), resize_w, resize_h, interp=cv2.INTER_NEAREST)
             if video.has_mask(idx) else None
         )
         return frame, mask
 
     for kf_idx in kf_bar:
-        targets = forward_targets(ann, kf_idx, args.n_targets)
+        candidate_targets = [
+            i for i in ann
+            if i > kf_idx and _matches_mod(i, args.target_mod, args.target_offset)
+        ]
+        targets = forward_targets(candidate_targets, kf_idx, args.n_targets)
         if not targets:
             tqdm.write(f"[c1] kf={kf_idx}: no forward targets, skipping", file=sys.stdout)
             continue
@@ -225,9 +277,14 @@ def main() -> int:
             n_tgt = len(all_results)
             t_flow = tm0["flow"] * n_tgt
             t_post = t_prop - t_flow
+            flow_description = (
+                f"1 batched SEA-RAFT pass, batch={n_tgt * 2}"
+                if args.flow_backend == "sea_raft"
+                else f"{n_tgt * 2} sequential FlowNet2 passes"
+            )
             tqdm.write(
                 f"       [io={t_io:.2f}s  "
-                f"flow={t_flow:.2f}s (1 pass, batch={n_tgt * 2})  "
+                f"flow={t_flow:.2f}s ({flow_description})  "
                 f"warp/fb/iou={t_post:.3f}s]",
                 file=sys.stdout,
             )

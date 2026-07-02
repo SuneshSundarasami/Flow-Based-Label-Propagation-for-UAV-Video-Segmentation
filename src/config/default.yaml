@@ -8,6 +8,8 @@ paths:
   video: DJI_0043
   # SEA-RAFT checkpoint used for optical flow.
   sea_raft_checkpoint: third_party/SEA-RAFT/checkpoints/model.safetensors
+  # FlowNet2 checkpoint used when flow.backend is "flownet2".
+  flownet2_checkpoint: third_party/flownet2-pytorch/checkpoints/FlowNet2_checkpoint.pth.tar
   # Where run artifacts (tables, figures) are written.
   output_dir: outputs
 
@@ -20,6 +22,8 @@ data:
   mask_format: color
 
 flow:
+  # Direct-propagation backend: "sea_raft" or "flownet2".
+  backend: sea_raft
   # SEA-RAFT model config file (one of the yamls shipped in the submodule).
   # spring-L uses the same checkpoint as spring-M but runs 12 refinement
   # iterations instead of 4, giving better accuracy on GPU.

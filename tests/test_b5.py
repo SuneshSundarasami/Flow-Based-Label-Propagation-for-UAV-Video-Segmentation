@@ -15,11 +15,13 @@ from config import load_config
 _REQUIRED = [
     ("paths", "dataset_root"),
     ("paths", "sea_raft_checkpoint"),
+    ("paths", "flownet2_checkpoint"),
     ("paths", "output_dir"),
     ("data", "frame_glob"),
     ("data", "mask_glob"),
     ("data", "mask_format"),
     ("flow", "model_cfg"),
+    ("flow", "backend"),
     ("flow", "iters"),
     ("flow", "device"),
     ("propagation", "n_targets"),
@@ -41,6 +43,10 @@ def test_data_section_values_are_sane():
     assert isinstance(cfg["data"]["frame_glob"], str)
     assert isinstance(cfg["data"]["mask_glob"], str)
     assert cfg["data"]["mask_format"] in ("color", "indexed")
+
+
+def test_flow_backend_is_supported():
+    assert load_config()["flow"]["backend"] in ("sea_raft", "flownet2")
 
 
 def test_propagation_n_targets_is_positive_int():

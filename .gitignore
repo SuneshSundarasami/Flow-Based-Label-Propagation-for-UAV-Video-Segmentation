@@ -19,6 +19,11 @@ outputs/
 results/
 *.mp4
 *.avi
+server_bundle/
+third_party/flownet2-pytorch/
+third_party/pretrained_models/
+third_party/segprop/
+visualizations/__pycache__/
 
 # LaTeX build artifacts
 Proposal/$work/
@@ -33,5 +38,6 @@ Proposal/*.synctex.gz
 # OS / editor
 .DS_Store
 Thumbs.db
+*.Zone.Identifier
 .vscode/
 .idea/

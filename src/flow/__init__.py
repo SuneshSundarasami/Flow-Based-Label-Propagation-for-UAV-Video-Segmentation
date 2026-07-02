@@ -1,4 +1,4 @@
-"""Optical flow estimation (SEA-RAFT backbone)."""
+"""Optical flow estimation backends for direct mask propagation."""
 from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
@@ -6,6 +6,7 @@ from typing import Protocol, runtime_checkable
 import numpy as np
 
 from .sea_raft import SeaRaftFlow, estimate_flow
+from .flownet2 import FlowNet2Flow
 
 
 @runtime_checkable
@@ -25,4 +26,4 @@ class FlowEstimator(Protocol):
     ) -> "list[np.ndarray]": ...
 
 
-__all__ = ["FlowEstimator", "SeaRaftFlow", "estimate_flow"]
+__all__ = ["FlowEstimator", "FlowNet2Flow", "SeaRaftFlow", "estimate_flow"]

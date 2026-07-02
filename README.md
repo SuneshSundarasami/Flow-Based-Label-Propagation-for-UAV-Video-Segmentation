@@ -1,7 +1,8 @@
 # Flow-Based Label Propagation for UAV Video Segmentation
 
 DLRV project. Propagates dense segmentation labels from annotated **keyframes** to
-neighbouring frames of a UAV video (Ruralscapes) along **SEA-RAFT** optical flow,
+neighbouring frames of a UAV video (Ruralscapes) along **SEA-RAFT** or
+**FlowNet2** optical flow,
 and characterises how label quality decays with distance from the keyframe.
 
 See [`plan.md`](plan.md) for the full work-package breakdown and
@@ -35,7 +36,9 @@ data loads (142 matched frame/mask pairs, median annotation spacing 50 frames).
 | C5 | Failure-case visualisations (`scripts/visualize_failures.py`) | ☑ done — 2 tests |
 | C6 | Report write-up | ☐ pending |
 
-All 73 unit tests pass (`conda run -n uav-flowprop pytest -q`).
+The implementation has unit coverage for both direct-flow backends and the
+SegProp reproduction utilities. Run `conda run -n uav-flowprop pytest -q` to
+verify the checked-out revision.
 
 ## Setup (conda)
 
@@ -64,7 +67,7 @@ conda run -n uav-flowprop pytest -q
 ```
 src/                   # source packages (flat)
   config/              # default.yaml + loader (deep-merge overrides)
-  flow/                # SEA-RAFT wrapper + FlowEstimator Protocol
+  flow/                # SEA-RAFT / FlowNet2 wrappers + FlowEstimator Protocol
   warp/                # mask_warp (B1) + occlusion FB check (B2)
   eval/                # mIoU / per-class IoU (B3) + results CSV schema (B5/C1)
   propagation/         # single-keyframe pipeline (B4) + target scheduling (C1)
@@ -81,8 +84,14 @@ scripts/               # CLI entry points
   analyze_per_class.py # C4 per-class IoU breakdown
   visualize_failures.py # C5 worst-pair visualizations
   prepare_segprop_dataset.py # SegProp-format Ruralscapes labels/frames
+  generate_flownet2_h5.py # FlowNet2 H5 harness for SegProp reproduction
+  run_segprop_table1.py # SegProp vote/iterate/denoise Table 1 runner
+  download_flownet2_checkpoint.py # official FlowNet2 checkpoint fetcher
+  flownet2_pair.py      # one-pair FlowNet2 -> .npy flow
+  flownet2_pair_wsl.py  # fresh-WSL GPU wrapper for FlowNet2 pair runs
 tests/                 # pytest (pythonpath=src)
 third_party/SEA-RAFT/  # pinned git submodule (optical flow backbone)
+visualizations/        # scripts that render local, ignored comparison videos
 docs/                  # literature notes, write-ups
 data/                  # dataset goes here, OUTSIDE src (git-ignored)
 outputs/               # run artifacts (git-ignored)
@@ -139,8 +148,114 @@ outputs/segprop_paper_repro/
   metadata/<video>_labels.csv
 ```
 
-This only prepares data; FlowNet2, SegProp propagation, filtering, and Table 1
-metric reproduction are separate steps.
+The official training split has been prepared locally (13 videos and 37,666
+2K frames). These generated artifacts remain under ignored `outputs/`.
+
+The second reproduction step wraps a legacy FlowNet2 runner and writes the H5
+files expected by SegProp. The FlowNet2 command must write a `.npy` array with
+shape `(H, W, 2)` in `(x, y)` vector order for each image pair.
+
+Download the official FlowNet2 checkpoint once:
+
+```bash
+conda run -n uav-flowprop python scripts/download_flownet2_checkpoint.py
+```
+
+Smoke-test one pair on the GPU-enabled WSL session:
+
+```bash
+conda run -n uav-flowprop python scripts/flownet2_pair_wsl.py \
+    --img1 third_party/SEA-RAFT/custom/image1.jpg \
+    --img2 third_party/SEA-RAFT/custom/image2.jpg \
+    --out /tmp/flownet2_smoke.npy
+```
+
+```bash
+conda run -n uav-flowprop python scripts/generate_flownet2_h5.py \
+    --videos DJI_0043 \
+    --flow-command "conda run -n uav-flowprop python scripts/flownet2_pair_wsl.py --img1 {img1} --img2 {img2} --out {out}"
+```
+
+This writes:
+
+```text
+outputs/segprop_paper_repro/flow_2k_fn2/
+  <video>_forward.h5
+  <video>_backward.h5
+  <video>_progress.json
+```
+
+Each H5 contains a `flow` dataset with shape
+`[num_frames - 1, height, width, 2]`. The progress JSON lets interrupted
+per-video runs resume without recomputing completed adjacent pairs.
+
+With prepared labels and FlowNet2 H5 files available, run the paper-style
+SegProp Table 1 pipeline:
+
+```bash
+conda run --no-capture-output -n uav-flowprop python scripts/run_segprop_table1.py \
+    --videos DJI_0043 \
+    --device cuda
+```
+
+The runner imports a local `third_party/segprop` checkout, calls `vote` for `i01`, `iterate` for
+`i02` through `i07`, then runs the final `denoise` step into
+`outputs/segprop_paper_repro/output_2k/filtered/<video>/`. If evaluation is not
+skipped, it writes `table1_reproduction.csv` and `table1_reproduction.md` next
+to the prepared data.
+
+### Current SegProp reproduction evidence
+
+The complete `DJI_0101` sequence has been run at 2K resolution with FlowNet2.
+This is a one-video verification, not yet the paper's full training-split
+aggregate:
+
+| Method | mF1 | mIoU | Paper aggregate |
+|---|---:|---:|---:|
+| SegProp i01 | 0.899522 | 0.824061 | 0.884 / 0.801 |
+| SegProp i01 + filtering | 0.909171 | 0.841056 | 0.903 / 0.829 |
+
+The Table 3 ablations (Zhu and homography votes) are planned but not yet
+implemented. See [`segprop_plan.md`](segprop_plan.md) for the remaining work.
+
+## Direct Flow Backends
+
+`scripts/run_full_video.py` evaluates the project's direct, one-keyframe mask
+warp. Select the optical-flow model with `--flow-backend`:
+
+```bash
+# SEA-RAFT (default)
+conda run --no-capture-output -n uav-flowprop python scripts/run_full_video.py \
+    --flow-backend sea_raft
+
+# FlowNet2; requires the local FlowNet2 checkout and checkpoint configured in default.yaml
+conda run --no-capture-output -n uav-flowprop python scripts/run_full_video.py \
+    --flow-backend flownet2
+```
+
+Both commands write cached pair CSVs and `all_pairs.csv` below
+`outputs/results/<result-name>/propagation_results/`. Use `--no-resize` for
+source resolution, or `--resize-width` and `--resize-height` for a chosen
+working resolution.
+
+On the matched 2K `DJI_0101` seven-pair check (keyframes 0, 100, ..., 600;
+targets 50, 150, ..., 650), the direct methods produced:
+
+| Backend | All-pixel mIoU | Valid-pixel mIoU | FB-valid coverage |
+|---|---:|---:|---:|
+| SEA-RAFT | 0.825929 | 0.873571 | 77.971% |
+| FlowNet2 | 0.828829 | 0.874143 | 68.737% |
+
+This small matched sample gives FlowNet2 a 0.29 percentage-point all-pixel
+lead, but SEA-RAFT retains 9.23 percentage points more valid coverage. It is
+not sufficient to make a general model-ranking claim.
+
+## Visualization Scripts
+
+The scripts under [`visualizations/`](visualizations/) create H.264/AAC
+comparison videos suitable for the VS Code video preview. Generated MP4s are
+intentionally ignored. See [`visualizations/README.md`](visualizations/README.md)
+for commands and panel layouts.
 
 ## Phase A: verifying the foundation
 

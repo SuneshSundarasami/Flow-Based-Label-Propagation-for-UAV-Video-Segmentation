@@ -15,7 +15,8 @@ A **flow-based label propagation pipeline** for a single UAV video from
 **Ruralscapes**:
 
 1. Take a **keyframe** that has a dense ground-truth segmentation mask.
-2. Use **SEA-RAFT** to estimate optical flow between the keyframe and nearby frames.
+2. Use **SEA-RAFT** (default) or **FlowNet2** to estimate optical flow between
+   the keyframe and nearby frames.
 3. **Warp** the keyframe mask onto neighbour frames along the flow
    (nearest-neighbour, to keep label values discrete).
 4. **Detect occlusions** with a forward–backward consistency check and mark those
@@ -239,7 +240,7 @@ check.
 
 ### Phase D — Optional extension  *(maps to proposal §5; only if ahead of schedule)*
 
-**D0. SegProp-format dataset preparation** — *implemented; full split run pending*
+**D0. SegProp-format dataset preparation** — *complete*
 - Convert Ruralscapes manual labels to SegProp-style one-hot `.npz` files with
   `map` and `votes` arrays.
 - Split the official training labels into `train_even` / `train_odd` by
@@ -248,9 +249,34 @@ check.
 - *Done when:* the prep script runs on the training split and produces
   `outputs/segprop_paper_repro/labels_2k/`, optional `frames_2k/`, and
   `metadata/`.
-- *Verified so far:* unit tests cover label naming, RGB palette lookup,
-  one-hot encoding, TrainEven/TrainOdd output, and metadata; a real-data smoke
-  run on `DJI_0043` prepared 142 labels at small resolution.
+- *Verified:* unit tests cover label naming, RGB palette lookup, one-hot
+  encoding, TrainEven/TrainOdd output, and metadata. The official training
+  split is prepared locally: 13 videos, 37,666 2K frames, labels, and metadata.
+
+**D0.5. FlowNet2 H5 generation harness** — *implemented; one-video run complete*
+- Wrap an external legacy FlowNet2 command that writes per-pair `.npy` flow
+  arrays in `(x, y)` order.
+- Persist SegProp-compatible H5 files at
+  `outputs/segprop_paper_repro/flow_2k_fn2/<video>_{forward,backward}.h5`.
+- Keep per-video generation resumable with `<video>_progress.json`.
+- *Verified:* tests cover frame ordering, flow shape/finite validation,
+  forward/backward H5 writing, and progress-file creation with a fake flow
+  command. Full forward/backward 2K H5 flow was generated for `DJI_0101`; the
+  remaining training videos are pending because the dense flow cache is large.
+
+**D0.6. SegProp Table 1 runner** — *implemented; one-video run complete*
+- Import the real `third_party/segprop` checkout and run the paper sequence:
+  `vote` -> `iterate` through `i07` -> final `denoise`.
+- Use the paper/demo parameters (`pv_series=[0, 5, 10]`, final
+  `pv_series=[0, 1, 3, 5, 7]`, `frame_copy(index % 100 == 0)`, and the
+  TrainOdd evaluation frame filter).
+- Write `table1_reproduction.csv` and `.md` with reproduced values, paper
+  targets, and deltas.
+- *Verified:* tests cover input validation, call ordering, paper frame filter
+  helpers, and Table 1 CSV/Markdown writing with fake SegProp/stats modules.
+  The complete 2K `DJI_0101` run produced i01 mF1/mIoU `0.899522/0.824061` and
+  filtered `0.909171/0.841056`. A full training-split aggregate is still
+  pending.
 
 **D1.** Use C1's per-pair scores to label which intervals are hard to propagate.
 **D2.** Lightweight content-aware keyframe selector recommending *k* frames to annotate.
@@ -294,6 +320,9 @@ budget; show higher overall mIoU.
 | C4 | Per-class IoU breakdown | ☑ done; `analyze_per_class.py` + CSV/bar plot; 2 tests |
 | C5 | Failure-case visualisations | ☑ done; `visualize_failures.py` + worst-pair panels; 2 tests |
 | C6 | Report write-up | ☐ todo |
+| D0 | SegProp-format training data preparation | ☑ done; 13 videos / 37,666 2K frames prepared locally |
+| D0.5 | FlowNet2 H5 generation | ◐ one complete 2K video (`DJI_0101`); full training split pending |
+| D0.6 | SegProp Table 1 runner | ◐ `DJI_0101` completed; full training-split aggregate pending |
 | D1–D3 | Optional: content-aware keyframe selection | ☐ optional |
 
 Status legend: ☐ todo · ◐ in progress · ☑ done
