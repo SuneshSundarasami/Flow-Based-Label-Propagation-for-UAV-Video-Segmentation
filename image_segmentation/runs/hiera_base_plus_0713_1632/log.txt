@@ -1,0 +1,2 @@
+epoch   1 | train 1.1410 | val 0.6851 | mIoU 0.4844 | {'road': 0.7898, 'vegetation': 0.1228, 'tree': 0.6361, 'person': 0.0, 'vehicle': 0.4626, 'building': 0.8951}
+epoch   2 | train 0.4018 | val 0.4255 | mIoU 0.5981 | {'road': 0.8474, 'vegetation': 0.5085, 'tree': 0.6433, 'person': 0.0, 'vehicle': 0.6585, 'building': 0.9311}

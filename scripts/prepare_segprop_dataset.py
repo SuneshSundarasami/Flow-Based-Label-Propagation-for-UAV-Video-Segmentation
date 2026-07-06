@@ -8,8 +8,11 @@ from __future__ import annotations
 
 import argparse
 import csv
+import os
 import re
 import sys
+from collections import deque
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from shutil import copyfile
 
@@ -144,6 +147,12 @@ def prepare_labels(
     return counts
 
 
+def _resize_and_write(out_path: Path, frame: np.ndarray, size: tuple[int, int]) -> None:
+    resized = cv2.resize(frame, size, interpolation=cv2.INTER_AREA)
+    if not cv2.imwrite(str(out_path), resized):
+        raise OSError(f"failed to write {out_path}")
+
+
 def export_frames(
     *,
     dataset_root: Path,
@@ -151,10 +160,21 @@ def export_frames(
     videos: list[str],
     size: tuple[int, int],
     overwrite: bool,
+    workers: int | None = None,
 ) -> dict[str, int]:
-    """Export dense MP4 frames at SegProp's paper-like 2K resolution."""
+    """Export dense MP4 frames at SegProp's paper-like 2K resolution.
+
+    Decoding stays sequential (a video is a stream), but the CPU-heavy
+    resize + JPEG-encode + write of each frame is fanned out to a thread pool so
+    it overlaps the next decode.  OpenCV releases the GIL for those calls, so the
+    pool gives real parallelism; the output is byte-identical to the serial path.
+    """
     frames_root = out_root / "frames_2k"
     counts: dict[str, int] = {}
+    workers = workers or min(16, (os.cpu_count() or 8))
+    # Let the pool, not OpenCV's internal threads, provide parallelism.
+    cv2.setNumThreads(1)
+    max_pending = workers * 4
 
     for video in videos:
         video_path = dataset_root / "videos" / f"{video}.MP4"
@@ -167,18 +187,24 @@ def export_frames(
         frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
         written = 0
-        for index in tqdm(range(frame_count), desc=f"frames {video}", unit="frame"):
-            out_path = out_dir / f"{video}_{index:06d}.jpg"
-            ok, frame = cap.read()
-            if not ok:
-                print(f"[segprop-prep] failed to read {video} frame {index}")
-                break
-            if out_path.exists() and not overwrite:
-                continue
-            resized = cv2.resize(frame, size, interpolation=cv2.INTER_AREA)
-            if not cv2.imwrite(str(out_path), resized):
-                raise OSError(f"failed to write {out_path}")
-            written += 1
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            pending: deque = deque()
+            for index in tqdm(range(frame_count), desc=f"frames {video}", unit="frame"):
+                ok, frame = cap.read()
+                if not ok:
+                    print(f"[segprop-prep] failed to read {video} frame {index}")
+                    break
+                out_path = out_dir / f"{video}_{index:06d}.jpg"
+                if out_path.exists() and not overwrite:
+                    continue
+                pending.append(pool.submit(_resize_and_write, out_path, frame, size))
+                written += 1
+                # Backpressure: bound outstanding frames so memory stays flat and
+                # any write error surfaces promptly.
+                if len(pending) >= max_pending:
+                    pending.popleft().result()
+            for fut in pending:
+                fut.result()
 
         cap.release()
         counts[video] = written
@@ -204,6 +230,8 @@ def main() -> int:
     parser.add_argument("--overwrite", action="store_true")
     parser.add_argument("--no-compress", action="store_true",
                         help="Write faster but larger NPZ files.")
+    parser.add_argument("--frame-workers", type=int, default=None,
+                        help="Threads for frame resize/encode/write (default: CPU count, max 16).")
     args = parser.parse_args()
 
     dataset_root = Path(args.dataset_root)
@@ -232,6 +260,7 @@ def main() -> int:
             videos=videos,
             size=size,
             overwrite=args.overwrite,
+            workers=args.frame_workers,
         )
 
     print("[segprop-prep] done")

@@ -1,0 +1,24 @@
+data:
+  pipeline: ssp
+  root: ../thirdparty/SSP/datasets/UAVid
+  crop_size:
+  - 1440
+  - 2560
+  augmentation: true
+model:
+  backbone: hiera_base_plus
+  sam2_checkpoint_dir: ../thirdparty/SSP/base_checkpoints
+  upsampling: bicubic
+train:
+  batch_size: 4
+  epochs: 4
+  lr: 2.5e-05
+  weight_decay: 0.05
+  warmup_epochs: 2
+  start_lr: 0.0001
+  final_lr: 0.0001
+  num_workers: 4
+  amp: false
+  early_stop: {}
+output:
+  dir: runs

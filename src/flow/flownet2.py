@@ -78,6 +78,17 @@ class FlowNet2Flow:
         padded[..., :height, :width] = pair
         return padded, (height, width)
 
+    @staticmethod
+    def _batch_tensor(
+        pairs: list[tuple[np.ndarray, np.ndarray]], device: torch.device
+    ) -> torch.Tensor:
+        """Stack *pairs* into FlowNet2's ``(B, 3, 2, H, W)`` input tensor."""
+        imgs1 = np.stack([a for a, _ in pairs])  # (B, H, W, 3)
+        imgs2 = np.stack([b for _, b in pairs])
+        # (B, 2, H, W, 3) -> (B, 3, 2, H, W)
+        batch = np.stack([imgs1, imgs2], axis=1).transpose(0, 4, 1, 2, 3)
+        return torch.from_numpy(batch.astype(np.float32)).to(device, non_blocking=True)
+
     @torch.no_grad()
     def estimate_flow(self, img1: np.ndarray, img2: np.ndarray) -> np.ndarray:
         pair = self._pair_tensor(img1, img2, self.device)
@@ -85,8 +96,30 @@ class FlowNet2Flow:
         flow = self.model(pair).squeeze(0)
         return flow.detach().cpu().numpy().transpose(1, 2, 0).astype(np.float32)[:height, :width]
 
+    @torch.no_grad()
+    def estimate_flow_batch_tensor(
+        self,
+        pairs: list[tuple[np.ndarray, np.ndarray]],
+    ) -> torch.Tensor:
+        """Estimate flow for many pairs in one forward pass, returned on device.
+
+        Returns a ``(B, 2, H, W)`` float32 tensor on ``self.device``.  All pairs
+        must share spatial dimensions.
+        """
+        if not pairs:
+            return torch.empty(0, device=self.device)
+        height, width = pairs[0][0].shape[:2]
+        batch = self._batch_tensor(pairs, self.device)
+        batch, _ = self._pad_to_multiple_of_64(batch)
+        flow = self.model(batch)  # (B, 2, H_pad, W_pad)
+        return flow[..., :height, :width].contiguous()
+
     def estimate_flow_batch(
         self,
         pairs: list[tuple[np.ndarray, np.ndarray]],
     ) -> list[np.ndarray]:
-        return [self.estimate_flow(img1, img2) for img1, img2 in pairs]
+        if not pairs:
+            return []
+        flow = self.estimate_flow_batch_tensor(pairs)
+        flow = flow.permute(0, 2, 3, 1).detach().cpu().numpy().astype(np.float32)
+        return [flow[i] for i in range(len(pairs))]

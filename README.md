@@ -103,14 +103,21 @@ Proposal/              # the original DLRV proposal (LaTeX + PDF)
 Ruralscapes was downloaded from the official project page:
 <https://sites.google.com/site/aerialimageunderstanding/semantics-through-time-semi-supervised-segmentation-of-aerial-videos>.
 
-The local archive is expected at `data/Ruralscapes.zip` and is intentionally not
-tracked by git. The archive contains `Ruralscapes/videos/*.MP4` and dense manual
-labels under `Ruralscapes/labels/manual_labels/<video>/segfull_*.png`. For A3,
-extract the archive and export frames from the selected MP4 so the loader can
-match frame indices against the labelled masks.
+The dataset lives in `data/Ruralscapes/` (intentionally not tracked by git),
+containing `videos/*.MP4` and dense manual labels under
+`labels/manual_labels/<video>/segfull_*.png`. Fetch it directly from the public
+SharePoint share into that layout with:
 
 ```bash
-unzip data/Ruralscapes.zip -d data
+python scripts/download_ruralscapes.py   # -> data/Ruralscapes/ (~12.4 GiB, resumable)
+```
+
+(Alternatively, if you already have `data/Ruralscapes.zip` from the official
+project page, `unzip data/Ruralscapes.zip -d data` produces the same layout.)
+For A3, export frames from the selected MP4 so the loader can match frame indices
+against the labelled masks.
+
+```bash
 python scripts/export_labelled_frames.py \
     --video data/Ruralscapes/videos/DJI_0043.MP4 \
     --labels data/Ruralscapes/labels/manual_labels/DJI_0043 \

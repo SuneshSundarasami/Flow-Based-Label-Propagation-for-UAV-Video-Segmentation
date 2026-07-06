@@ -124,6 +124,51 @@ class SeaRaftFlow:
         """Estimate forward flow (img1 -> img2). Returns (H, W, 2) float32."""
         return self.estimate_flow_batch([(img1, img2)])[0]
 
+    # cuDNN raises CUDNN_STATUS_NOT_SUPPORTED once a conv activation at 2K crosses
+    # ~2**31 elements, which happens beyond ~16 images per forward pass.  Larger
+    # requests are split into safe sub-batches so any caller batch size just works.
+    max_images_per_launch: int = 16
+
+    @torch.no_grad()
+    def estimate_flow_batch_tensor(
+        self,
+        pairs: "list[tuple[np.ndarray, np.ndarray]]",
+    ) -> "torch.Tensor":
+        """Estimate flow for multiple pairs, returning a device tensor.
+
+        Returns a ``(B, 2, H, W)`` float32 tensor on ``self.device`` so callers
+        can keep the flow on the GPU for downstream warping/metrics without a
+        host round-trip.  All pairs must share spatial dimensions.  Requests
+        larger than :attr:`max_images_per_launch` are run in sub-batches and
+        concatenated (see the cuDNN note above).
+        """
+        from utils.utils import InputPadder  # type: ignore
+
+        if not pairs:
+            return torch.empty(0, device=self.device)
+
+        cap = self.max_images_per_launch
+        if len(pairs) > cap:
+            parts = [
+                self.estimate_flow_batch_tensor(pairs[i:i + cap])
+                for i in range(0, len(pairs), cap)
+            ]
+            return torch.cat(parts, dim=0)
+
+        h, w = pairs[0][0].shape[:2]
+        t1s = torch.stack(
+            [torch.from_numpy(a).float().permute(2, 0, 1) for a, _ in pairs]
+        ).to(self.device, non_blocking=True)  # (B, 3, H, W)
+        t2s = torch.stack(
+            [torch.from_numpy(b).float().permute(2, 0, 1) for _, b in pairs]
+        ).to(self.device, non_blocking=True)  # (B, 3, H, W)
+
+        padder = InputPadder(t1s.shape)
+        t1s, t2s = padder.pad(t1s, t2s)
+        flow = self._calc_flow(t1s, t2s)   # (B, 2, H_pad, W_pad)
+        flow = padder.unpad(flow)           # (B, 2, H, W)
+        return flow[..., :h, :w].contiguous()
+
     @torch.no_grad()
     def estimate_flow_batch(
         self,
@@ -134,28 +179,11 @@ class SeaRaftFlow:
         All pairs must have the same spatial dimensions. Returns a list of
         (H, W, 2) float32 arrays in the same order as *pairs*.
         """
-        from utils.utils import InputPadder  # type: ignore
-
         if not pairs:
             return []
-
-        h, w = pairs[0][0].shape[:2]
-        t1s = torch.stack(
-            [torch.from_numpy(a).float().permute(2, 0, 1) for a, _ in pairs]
-        ).to(self.device)  # (B, 3, H, W)
-        t2s = torch.stack(
-            [torch.from_numpy(b).float().permute(2, 0, 1) for _, b in pairs]
-        ).to(self.device)  # (B, 3, H, W)
-
-        padder = InputPadder(t1s.shape)
-        t1s, t2s = padder.pad(t1s, t2s)
-        flow = self._calc_flow(t1s, t2s)   # (B, 2, H_pad, W_pad)
-        flow = padder.unpad(flow)           # (B, 2, H, W)
-
-        return [
-            flow[i].permute(1, 2, 0).cpu().numpy().astype(np.float32)[:h, :w]
-            for i in range(len(pairs))
-        ]
+        flow = self.estimate_flow_batch_tensor(pairs)
+        flow = flow.permute(0, 2, 3, 1).cpu().numpy().astype(np.float32)
+        return [flow[i] for i in range(len(pairs))]
 
 
 def estimate_flow(

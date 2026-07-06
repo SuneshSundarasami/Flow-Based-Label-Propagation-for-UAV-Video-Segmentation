@@ -10,6 +10,7 @@ data/**
 !data/.gitkeep
 *.ckpt
 *.pth
+*.pth-no-zip
 *.pt
 *.safetensors
 checkpoints/
@@ -19,11 +20,16 @@ outputs/
 results/
 *.mp4
 *.avi
+*.gif
 server_bundle/
 third_party/flownet2-pytorch/
 third_party/pretrained_models/
 third_party/segprop/
 visualizations/__pycache__/
+
+# Virtual environments
+.venv/
+venv/
 
 # LaTeX build artifacts
 Proposal/$work/
