@@ -388,9 +388,16 @@ class Hiera(nn.Module):
         h, w = hw
         window_embed = self.pos_embed_window
         pos_embed = F.interpolate(self.pos_embed, size=(h, w), mode="bicubic")
-        pos_embed = pos_embed + window_embed.tile(
-            [x // y for x, y in zip(pos_embed.shape, window_embed.shape)]
-        )
+        # window_embed repeats periodically across the feature map (one period
+        # per window). .tile() only works when (h, w) is an exact multiple of
+        # window_embed's spatial size, which fails on arbitrary/native-res
+        # inputs. Tile enough periods to cover (h, w) and crop the remainder
+        # instead -- identical to the old behavior whenever it did divide
+        # evenly, and well-defined otherwise.
+        wh, ww = window_embed.shape[-2:]
+        reps_h, reps_w = -(-h // wh), -(-w // ww)  # ceil div
+        tiled_window_embed = window_embed.tile((1, 1, reps_h, reps_w))[..., :h, :w]
+        pos_embed = pos_embed + tiled_window_embed
         pos_embed = pos_embed.permute(0, 2, 3, 1)
         return pos_embed
 

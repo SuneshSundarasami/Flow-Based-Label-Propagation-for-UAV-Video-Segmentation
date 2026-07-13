@@ -10,12 +10,13 @@ distillation, but it works standalone for any of the supported backbones.
 ## What's here
 
 ```
-configs/        one YAML per backbone — the main thing you edit
-data.py         UAVid dataset (reads the raw release directly), augmentations, loaders
-models.py       build_model() + backbone registry (add backbones here)
-hiera.py        vendored Hiera (SAM2) backbone — don't edit
-train.py        training loop: mIoU, cosine schedule, best ckpt, early stop
-infer.py        predictions / pseudo-logits from a checkpoint
+configs/                      one YAML per backbone — the main thing you edit
+data.py                       UAVid dataset (reads the raw release directly), augmentations, loaders
+models.py                     build_model() + backbone registry (add backbones here)
+hiera.py                      vendored Hiera (SAM2) backbone — don't edit
+train.py                      training loop: mIoU, cosine schedule, best ckpt, early stop
+infer.py                      predictions / pseudo-logits from a checkpoint
+download_sam2_checkpoints.py  fetches SAM2 weights for the hiera_* backbones
 ```
 
 No nested packages, no framework — five short top-level modules.
@@ -48,10 +49,18 @@ https://pytorch.org/get-started/locally/); the rest of `requirements.txt`
 `source .venv/bin/activate`, or just call `.venv/bin/python` directly as
 shown below.
 
-For `hiera_*` backbones, download the SAM2 weights into the dir named by
+For `hiera_*` backbones, fetch the SAM2 weights into the dir named by
 `model.sam2_checkpoint_dir` (default `sam2_checkpoints/`):
-`sam2_hiera_small.pt`, `sam2_hiera_base_plus.pt`
-(from https://github.com/facebookresearch/sam2#sam-2-checkpoints).
+
+```bash
+.venv/bin/python download_sam2_checkpoints.py                 # small + base_plus
+.venv/bin/python download_sam2_checkpoints.py --sizes small   # just one
+.venv/bin/python download_sam2_checkpoints.py --dir /some/other/dir --sizes tiny small base_plus large
+```
+
+Pulls straight from Meta's public release bucket (the same URLs
+https://github.com/facebookresearch/sam2#sam-2-checkpoints points at) and
+skips any checkpoint that's already there, so re-running is a no-op.
 
 ## Data
 

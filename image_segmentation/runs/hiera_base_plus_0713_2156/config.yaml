@@ -2,16 +2,16 @@ data:
   root: ../data/uavid/uavid_v1.5_official_release
   crop_size: 1024
 model:
-  backbone: hiera_small  # any key in models.BACKBONES
-  sam2_checkpoint_dir: sam2_checkpoints  # only used by hiera_* backbones
+  backbone: hiera_base_plus
+  sam2_checkpoint_dir: sam2_checkpoints
 train:
-  batch_size: 24
+  batch_size: 4
   epochs: 200
   lr: 0.0001
   weight_decay: 0.05
   warmup_epochs: 2
   num_workers: 4
-  amp: true                 # bfloat16 autocast (A100) — big memory saving
+  amp: true
   early_stop:
     min_epochs: 40
     patience: 15

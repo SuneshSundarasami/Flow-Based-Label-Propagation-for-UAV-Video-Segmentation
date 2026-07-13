@@ -1,0 +1,40 @@
+# Default config for the adaptive hybrid pipeline: infer a keyframe with the
+# segmentation model, propagate it with optical flow, and re-infer once
+# propagation confidence drops too far. Override any field via a second YAML
+# (--config path merges on top) or CLI flags -- see run.py --help.
+
+segmentation:
+  backbone: convnext_large   # any key in image_segmentation/models.py BACKBONES
+  checkpoint: image_segmentation/runs/convnext_large_0713_2033/best.pth
+  decoder_style: ssp
+  upsampling: bilinear
+  sam2_checkpoint_dir: image_segmentation/sam2_checkpoints  # only used by hiera_* backbones
+
+flow:
+  backend: sea_raft                # sea_raft | flownet2
+  model_cfg: third_party/SEA-RAFT/config/eval/spring-L.json
+  checkpoint: third_party/SEA-RAFT/checkpoints/model.safetensors
+  flownet2_checkpoint: third_party/flownet2-pytorch/checkpoints/FlowNet2_checkpoint.pth.tar
+  iters: 12
+  scale: -2            # SEA-RAFT internal downsample: -1 = half res, -2 = quarter res.
+                        # Quartering resolution cost ~0.005 mIoU in testing but cut
+                        # flow time >3x and let batching actually work -- see README.
+  fb_threshold: 1.5     # forward/backward round-trip error (px) above which a pixel
+                         # is flagged unreliable
+  precision: bf16       # bf16 | fp32 (bf16 is ~free: <0.02px difference in testing)
+  steps_per_chunk: 16   # flow is computed this many steps at a time so peak GPU
+                         # memory stays flat regardless of video length
+
+adaptive:
+  valid_threshold: 0.95  # re-infer once cumulative FB-valid coverage drops to/below
+                          # this. Higher = more model calls = better accuracy, similar
+                          # total time (flow compute dominates either way).
+                          # 0.75 -> ~2.2x speedup, mIoU gap ~-0.26
+                          # 0.90 -> ~2.1x speedup, mIoU gap ~-0.15
+                          # 0.95 -> ~1.9x speedup, mIoU gap ~-0.05  (default)
+  device: cuda
+
+output:
+  save_masks: true
+  format: palette_png    # palette_png | grayscale_png | rgb_png | npy
+  out_dir: outputs/adaptive_inference

@@ -165,7 +165,8 @@ def main():
         # checkpoint: always save last, snapshot best
         torch.save({"model": model.state_dict(), "epoch": epoch, "miou": miou, "cfg": cfg},
                    os.path.join(run_dir, "last.pth"))
-        if miou > best_miou + 1e-9:
+        es = t.get("early_stop", {})
+        if miou > best_miou + es.get("delta", 0.0):
             best_miou, best_epoch, since_improved = miou, epoch, 0
             torch.save({"model": model.state_dict(), "epoch": epoch, "miou": miou, "cfg": cfg},
                        os.path.join(run_dir, "best.pth"))
@@ -173,7 +174,6 @@ def main():
             since_improved += 1
 
         # plateau early-stop
-        es = t.get("early_stop", {})
         if es and epoch >= es.get("min_epochs", 40) and since_improved >= es.get("patience", 15):
             print(f"[early-stop] no >+{es.get('delta',0)} improvement for {since_improved} epochs")
             break
