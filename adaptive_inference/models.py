@@ -4,6 +4,13 @@ Both live in sibling packages (image_segmentation/, src/) that aren't on
 sys.path by default and both happen to define a module named ``data`` --
 image_segmentation puts itself first on sys.path so its ``data``/``models``
 win the name over src's Ruralscapes-specific ``data`` package.
+
+This has to unconditionally move both paths to the front (not just insert if
+absent): Python auto-prepends a running script's own directory to
+sys.path[0], so a script living inside image_segmentation/ (e.g.
+benchmark_models.py) already has that path present, just at a lower-priority
+position -- a plain "insert if not present" check would then skip it and
+leave src/ (inserted fresh at index 0) winning the name collision.
 """
 from __future__ import annotations
 
@@ -16,8 +23,9 @@ from .config import REPO_ROOT, Config
 _IMG_SEG = REPO_ROOT / "image_segmentation"
 _SRC = REPO_ROOT / "src"
 for _p in (str(_SRC), str(_IMG_SEG)):  # image_segmentation last -> highest priority
-    if _p not in sys.path:
-        sys.path.insert(0, _p)
+    while _p in sys.path:
+        sys.path.remove(_p)
+    sys.path.insert(0, _p)
 
 
 def build_segmentation_model(cfg: Config) -> torch.nn.Module:

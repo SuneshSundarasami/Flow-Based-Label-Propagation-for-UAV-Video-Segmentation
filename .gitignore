@@ -18,6 +18,7 @@ checkpoints/
 # Outputs / results
 outputs/
 results/
+tmp/
 *.mp4
 *.avi
 *.gif
