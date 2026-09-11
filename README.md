@@ -1,474 +1,181 @@
 # Flow-Based Label Propagation for UAV Video Segmentation
 
-DLRV project. Propagates dense segmentation labels from annotated **keyframes** to
-neighbouring frames of a UAV video (Ruralscapes) along **SEA-RAFT** or
-**FlowNet2** optical flow,
-and characterises how label quality decays with distance from the keyframe.
+DLRV project. A drone that acts on what it sees needs a semantic label for
+every frame, but running a segmentation model on every 4K frame costs about
+370 ms — roughly seven times longer than the flight it describes, on an A100
+rather than on anything an aircraft could carry.
 
-See [`plan.md`](plan.md) for the full work-package breakdown and
-[`docs/literature_notes.md`](docs/literature_notes.md) for background.
+Consecutive frames of aerial video are nearly identical, so most of that work
+is redundant. This project segments a video by running the model on a keyframe,
+carrying the labels forward along optical flow, and calling the model again only
+when the propagated labels can no longer be trusted. The decision is made from
+the flow itself, without ground truth and without looking ahead.
 
-## Status
+A demo of the pipeline is on [YouTube](https://youtu.be/JxAIijdjqFs).
 
-**Phase A (Foundation) — complete.** Package scaffold, SEA-RAFT wrapper +
-smoke test, and the Ruralscapes loader are in place and verified. `uav-flowprop`
-conda env builds; SEA-RAFT runs on CPU with a downloaded checkpoint; `DJI_0043`
-data loads (142 matched frame/mask pairs, median annotation spacing 50 frames).
+## How it works
 
-**Phase B (Core pipeline) — complete.**
+1. **Infer.** A trained segmentation model labels the first frame.
+2. **Propagate.** Backward optical flow warps the mask onto the next frame.
+   Sampling is nearest-neighbour, since labels are categorical.
+3. **Check.** A forward-backward consistency test marks each pixel valid or not:
+   step to the claimed source and back, and reject round trips longer than
+   1.5 px.
+4. **Accumulate.** The validity mask is itself warped forward and intersected
+   with each new check, so a pixel stays invalid once it fails. Coverage is the
+   fraction still valid, and it only falls between model calls.
+5. **Re-infer** when coverage drops to the threshold, which resets coverage to 1.
 
-| WP | What | Status |
-|----|------|--------|
-| B1 | Nearest-neighbour mask warp (`warp/mask_warp.py`) | ☑ done — 6 tests |
-| B2 | Forward–backward occlusion mask (`warp/occlusion.py`) | ☑ done — 5 tests |
-| B3 | mIoU + per-class IoU metric (`eval/metrics.py`) | ☑ done — 12 tests |
-| B4 | End-to-end single-keyframe propagation (`propagation/`) | ☑ done — 10 tests |
-| B5 | Config + CLI runner | ☑ done — 9 tests |
+Flow is computed for every consecutive pair before the decision is made, so
+flow is the fixed cost and the model call the marginal one. The threshold
+therefore buys quality rather than speed.
 
-**Phase C (Scale, analyse, report) — C1-C5 done; C6 pending.**
+## Results
 
-| WP | What | Status |
-|----|------|--------|
-| C1 | Full-video batched run (`scripts/run_full_video.py`) | ☑ done — 10 tests |
-| C2 | mIoU-vs-distance decay curve (`scripts/analyze_decay.py`) | ☑ done — 2 tests |
-| C3 | Difficulty heatmap over timeline (`scripts/analyze_heatmap.py`) | ☑ done — 3 tests |
-| C4 | Per-class IoU breakdown (`scripts/analyze_per_class.py`) | ☑ done — 2 tests |
-| C5 | Failure-case visualisations (`scripts/visualize_failures.py`) | ☑ done — 2 tests |
-| C6 | Report write-up | ☐ pending |
+On the UAVid validation split — 7 sequences, 6,307 frames at 4K, ConvNeXt-Large
+with SEA-RAFT, threshold 0.95:
 
-The implementation has unit coverage for both direct-flow backends and the
-SegProp reproduction utilities. Run `conda run -n uav-flowprop pytest -q` to
-verify the checked-out revision.
+| | model every frame | adaptive hybrid |
+|---|---:|---:|
+| Runtime | 2,433 s | 1,476 s (**1.65×** faster) |
+| mIoU | 0.7851 | 0.7554 (**96.2%** retained) |
+| Model calls | 6,307 | 1,241 (**19.7%** of frames) |
 
-## Setup (conda)
+Model calls follow motion under one fixed threshold and no per-sequence tuning:
+the most dynamic sequence triggers 474 calls and the calmest 87. Where a scene
+needs more inference the cost is paid in speed, not accuracy — the worst
+sequence falls to 1.30× while its quality stays in line with the rest.
 
-```bash
-# 1. create and activate the environment
-conda env create -f environment.yml
-conda activate uav-flowprop
+Segmentation backbones, each trained behind the same UPerNet decoder
+(validation mIoU at the best epoch):
 
-# 2. pull the SEA-RAFT submodule (if not cloned with --recurse-submodules)
-git submodule update --init --recursive
-```
+| Backbone | Val mIoU | Inference |
+|---|---:|---:|
+| ConvNeXt-Large | 0.8166 | 365 ms |
+| Swin-Large | 0.8081 | 433 ms |
+| Hiera-Base+ | 0.7802 | 327 ms |
 
-The source packages live flat under `src/`; scripts and tests add `src/` to the
-path automatically, so no install step is required.
+Flow backends, over 90 matched Ruralscapes pairs: SEA-RAFT reaches 0.7957 mIoU
+at 88.4% valid coverage against FlowNet2's 0.7951 at 88.8%, while being 3.6×
+faster per pair. SEA-RAFT is the default. Running its correlation volume at
+quarter resolution costs under 0.01 mIoU and is the largest single speed gain
+in the flow path.
 
-Verify the A1 scaffold:
-
-```bash
-PYTHONPATH=src conda run -n uav-flowprop python -c \
-    "import config, data, flow, viz, warp, eval; print('imports ok')"
-conda run -n uav-flowprop pytest -q
-```
+The residual quality loss concentrates on small moving objects, principally
+`person` and `vehicle`: equal class weighting amplifies small regions,
+nearest-neighbour warping erodes their boundaries at every step, and
+independent motion is where correspondence is least reliable.
 
 ## Repository layout
 
 ```
-src/                   # source packages (flat)
-  config/              # default.yaml + loader (deep-merge overrides)
-  flow/                # SEA-RAFT / FlowNet2 wrappers + FlowEstimator Protocol
-  warp/                # mask_warp (B1) + occlusion FB check (B2)
-  eval/                # mIoU / per-class IoU (B3) + results CSV schema (B5/C1)
-  propagation/         # single-keyframe pipeline (B4) + target scheduling (C1)
-  data/                # Ruralscapes loader + class palette
-  viz/                 # flow color-wheel visualization
-scripts/               # CLI entry points
-  smoke_test_flow.py   # A2 flow smoke test
-  inspect_data.py      # A3 data loader check
-  check_warp.py        # B1/B2 visual 4-panel check
-  run_propagation.py   # B4/B5 single-keyframe run with mIoU table + CSVs
-  run_full_video.py    # C1 full-video batched run -> all_pairs.csv
-  analyze_decay.py     # C2 mIoU-vs-distance summary + plot
-  analyze_heatmap.py   # C3 keyframe x distance difficulty heatmap
-  analyze_per_class.py # C4 per-class IoU breakdown
-  visualize_failures.py # C5 worst-pair visualizations
-  prepare_segprop_dataset.py # SegProp-format Ruralscapes labels/frames
-  generate_flownet2_h5.py # FlowNet2 H5 harness for SegProp reproduction
-  run_segprop_table1.py # SegProp vote/iterate/denoise Table 1 runner
-  download_flownet2_checkpoint.py # official FlowNet2 checkpoint fetcher
-  flownet2_pair.py      # one-pair FlowNet2 -> .npy flow
-  flownet2_pair_wsl.py  # fresh-WSL GPU wrapper for FlowNet2 pair runs
-tests/                 # pytest (pythonpath=src)
-third_party/SEA-RAFT/  # pinned git submodule (optical flow backbone)
-visualizations/        # scripts that render local, ignored comparison videos
-docs/                  # literature notes, write-ups
-data/                  # dataset goes here, OUTSIDE src (git-ignored)
-outputs/               # run artifacts (git-ignored)
-Proposal/              # the original DLRV proposal (LaTeX + PDF)
+adaptive_inference/    # the hybrid pipeline: gate, propagation, CLI runners
+image_segmentation/    # UPerNet training, backbones, inference, benchmarking
+src/                   # flow wrappers, warping, FB check, metrics, data loaders
+scripts/               # dataset preparation and analysis entry points
+thesis-report-master/  # the project report (LaTeX source + PDF)
+docs/                  # technical reference, model comparison, literature notes
+splits/                # dataset split definitions
+third_party/           # SEA-RAFT, SSP, GeoSeg submodules
+tests/                 # pytest suite
+data/, outputs/        # datasets and run artifacts (git-ignored)
 ```
 
-## Dataset
-
-Ruralscapes was downloaded from the official project page:
-<https://sites.google.com/site/aerialimageunderstanding/semantics-through-time-semi-supervised-segmentation-of-aerial-videos>.
-
-The dataset lives in `data/Ruralscapes/` (intentionally not tracked by git),
-containing `videos/*.MP4` and dense manual labels under
-`labels/manual_labels/<video>/segfull_*.png`. Fetch it directly from the public
-SharePoint share into that layout with:
+## Setup
 
 ```bash
-python scripts/download_ruralscapes.py   # -> data/Ruralscapes/ (~12.4 GiB, resumable)
+conda env create -f environment.yml
+conda activate uav-flowprop
+git submodule update --init --recursive
 ```
 
-(Alternatively, if you already have `data/Ruralscapes.zip` from the official
-project page, `unzip data/Ruralscapes.zip -d data` produces the same layout.)
-For A3, export frames from the selected MP4 so the loader can match frame indices
-against the labelled masks.
+Source packages live flat under `src/`; scripts add it to the path, so there is
+no install step. Paths in `adaptive_inference/config.yaml` resolve against the
+repository root regardless of the working directory.
+
+## Running it
+
+Train a segmentation backbone:
 
 ```bash
-python scripts/export_labelled_frames.py \
-    --video data/Ruralscapes/videos/DJI_0043.MP4 \
-    --labels data/Ruralscapes/labels/manual_labels/DJI_0043 \
-    --out data/Ruralscapes/frames/DJI_0043
+python image_segmentation/train.py \
+    --config image_segmentation/configs/uavid_convnext_large.yaml
 ```
 
-## SegProp paper reproduction prep
-
-The first reproduction step is preparing Ruralscapes in the format expected by
-SegProp-style code: RGB manual labels become one-hot `.npz` files with `map` and
-`votes` arrays, split by annotation ordinal into `train_even` and `train_odd`.
-By default the script uses the official training split file and writes to
-`outputs/segprop_paper_repro/`.
+Run the adaptive pipeline over a whole dataset split, writing per-frame metrics
+to `outputs/adaptive_inference_metrics/`:
 
 ```bash
-conda run -n uav-flowprop python scripts/prepare_segprop_dataset.py --steps labels
+python -m adaptive_inference.run_dataset --splits uavid_val
 ```
 
-To also export dense 2K frames from the MP4 videos, request both steps:
+Or over a single video, optionally scored against ground truth:
 
 ```bash
-conda run -n uav-flowprop python scripts/prepare_segprop_dataset.py \
-    --steps labels frames
+python -m adaptive_inference.run --video path/to/seq16/images.mp4 \
+    --gt-dir path/to/seq16/Labels --threshold 0.95
 ```
 
-Output layout:
+Useful overrides: `--threshold`, `--backbone`, `--flow-backend sea_raft|flownet2`,
+`--max-frames`, and `--config` for a YAML merged onto the defaults.
 
-```text
-outputs/segprop_paper_repro/
-  labels_2k/
-    all/<video>/<video>_<frame>.npz
-    train_even/<video>/<video>_<frame>.npz
-    train_odd/<video>/<video>_<frame>.npz
-  frames_2k/<video>/<video>_<frame>.jpg
-  metadata/<video>_labels.csv
-```
-
-The official training split has been prepared locally (13 videos and 37,666
-2K frames). These generated artifacts remain under ignored `outputs/`.
-
-The second reproduction step wraps a legacy FlowNet2 runner and writes the H5
-files expected by SegProp. The FlowNet2 command must write a `.npy` array with
-shape `(H, W, 2)` in `(x, y)` vector order for each image pair.
-
-Download the official FlowNet2 checkpoint once:
+Build the report:
 
 ```bash
-conda run -n uav-flowprop python scripts/download_flownet2_checkpoint.py
+cd thesis-report-master
+python scripts/make_figures.py    # figures + generated_numbers.tex
+python scripts/audit_numbers.py   # re-derives every value typed into a table
+latexmk -pdf report.tex
 ```
 
-Smoke-test one pair on the GPU-enabled WSL session:
+## Configuration
+
+Defaults used for every reported experiment, in
+`adaptive_inference/config.yaml`:
+
+| Setting | Value |
+|---|---|
+| backbone / decoder | `convnext_large` / UPerNet |
+| flow backend | `sea_raft`, `spring-L`, 12 refinements |
+| `scale` | −2 (quarter internal resolution) |
+| `fb_threshold` | 1.5 px |
+| `valid_threshold` | 0.95 |
+| `steps_per_chunk` | 16 |
+| precision | `bf16` |
+
+Flow cannot be precomputed for a whole video — forward and backward fields for
+900 4K frames would occupy about 120 GB — so the pipeline streams in chunks and
+discards each one once its frames are labelled, keeping peak memory flat
+regardless of video length.
+
+## Datasets
+
+**UAVid** drives the pipeline experiments: 4096×2160 aerial sequences, 6 classes
+after mapping, with ten densely annotated frames per validation sequence.
+
+**Ruralscapes** is used for the flow-backend comparison and the earlier
+keyframe-propagation work, and is downloaded from the
+[official project page](https://sites.google.com/site/aerialimageunderstanding/semantics-through-time-semi-supervised-segmentation-of-aerial-videos)
+into `data/Ruralscapes/`:
 
 ```bash
-conda run -n uav-flowprop python scripts/flownet2_pair_wsl.py \
-    --img1 third_party/SEA-RAFT/custom/image1.jpg \
-    --img2 third_party/SEA-RAFT/custom/image2.jpg \
-    --out /tmp/flownet2_smoke.npy
+python scripts/download_ruralscapes.py   # ~12.4 GiB, resumable
 ```
 
-```bash
-conda run -n uav-flowprop python scripts/generate_flownet2_h5.py \
-    --videos DJI_0043 \
-    --flow-command "conda run -n uav-flowprop python scripts/flownet2_pair_wsl.py --img1 {img1} --img2 {img2} --out {out}"
-```
-
-This writes:
-
-```text
-outputs/segprop_paper_repro/flow_2k_fn2/
-  <video>_forward.h5
-  <video>_backward.h5
-  <video>_progress.json
-```
-
-Each H5 contains a `flow` dataset with shape
-`[num_frames - 1, height, width, 2]`. The progress JSON lets interrupted
-per-video runs resume without recomputing completed adjacent pairs.
-
-With prepared labels and FlowNet2 H5 files available, run the paper-style
-SegProp Table 1 pipeline:
-
-```bash
-conda run --no-capture-output -n uav-flowprop python scripts/run_segprop_table1.py \
-    --videos DJI_0043 \
-    --device cuda
-```
-
-The runner imports a local `third_party/segprop` checkout, calls `vote` for `i01`, `iterate` for
-`i02` through `i07`, then runs the final `denoise` step into
-`outputs/segprop_paper_repro/output_2k/filtered/<video>/`. If evaluation is not
-skipped, it writes `table1_reproduction.csv` and `table1_reproduction.md` next
-to the prepared data.
-
-### Current SegProp reproduction evidence
-
-The complete `DJI_0101` sequence has been run at 2K resolution with FlowNet2.
-This is a one-video verification, not yet the paper's full training-split
-aggregate:
-
-| Method | mF1 | mIoU | Paper aggregate |
-|---|---:|---:|---:|
-| SegProp i01 | 0.899522 | 0.824061 | 0.884 / 0.801 |
-| SegProp i01 + filtering | 0.909171 | 0.841056 | 0.903 / 0.829 |
-
-The Table 3 ablations (Zhu and homography votes) are planned but not yet
-implemented. See [`segprop_plan.md`](segprop_plan.md) for the remaining work.
-
-## Direct Flow Backends
-
-`scripts/run_full_video.py` evaluates the project's direct, one-keyframe mask
-warp. Select the optical-flow model with `--flow-backend`:
-
-```bash
-# SEA-RAFT (default)
-conda run --no-capture-output -n uav-flowprop python scripts/run_full_video.py \
-    --flow-backend sea_raft
-
-# FlowNet2; requires the local FlowNet2 checkout and checkpoint configured in default.yaml
-conda run --no-capture-output -n uav-flowprop python scripts/run_full_video.py \
-    --flow-backend flownet2
-```
-
-Both commands write cached pair CSVs and `all_pairs.csv` below
-`outputs/results/<result-name>/propagation_results/`. Use `--no-resize` for
-source resolution, or `--resize-width` and `--resize-height` for a chosen
-working resolution.
-
-On the matched 2K `DJI_0101` seven-pair check (keyframes 0, 100, ..., 600;
-targets 50, 150, ..., 650), the direct methods produced:
-
-| Backend | All-pixel mIoU | Valid-pixel mIoU | FB-valid coverage |
-|---|---:|---:|---:|
-| SEA-RAFT | 0.825929 | 0.873571 | 77.971% |
-| FlowNet2 | 0.828829 | 0.874143 | 68.737% |
-
-This small matched sample gives FlowNet2 a 0.29 percentage-point all-pixel
-lead, but SEA-RAFT retains 9.23 percentage points more valid coverage. It is
-not sufficient to make a general model-ranking claim.
-
-## Visualization Scripts
-
-The scripts under [`visualizations/`](visualizations/) create H.264/AAC
-comparison videos suitable for the VS Code video preview. Generated MP4s are
-intentionally ignored. See [`visualizations/README.md`](visualizations/README.md)
-for commands and panel layouts.
-
-## Phase A: verifying the foundation
-
-**SEA-RAFT optical flow (WP A2)** — download/cache a checkpoint and run the smoke
-test:
-
-```bash
-python scripts/download_checkpoint.py \
-    --repo MemorySlices/Tartan-C-T-TSKH-spring540x960-M
-python scripts/smoke_test_flow.py --device cpu \
-    --img1 third_party/SEA-RAFT/custom/image1.jpg \
-    --img2 third_party/SEA-RAFT/custom/image2.jpg
-```
-
-The smoke test runs two checks and writes results to `outputs/smoke/`:
-
-- **Synthetic pair** — a red/blue checkerboard rotated by 5°, giving a
-  spatially-varying flow field (different direction and magnitude at every
-  pixel). Outputs: `synthetic_img1.png`, `synthetic_img2.png`,
-  `synthetic_flow.png` (colour-wheel + sparse arrow overlay).
-- **Real pair** — the two sample frames shipped with SEA-RAFT (`custom/`),
-  which appear to be from the Spring benchmark. Outputs: `real_img1.png`,
-  `real_img2.png`, `real_flow.png` (colour-wheel + sparse arrow overlay).
-
-The colour-wheel images are annotated with `draw_flow_arrows` from
-`src/viz/flow_viz.py`, which overlays a sparse grid of arrows (one per 60 px)
-so direction is readable at a glance. Use `--device cuda` when GPU access is
-available.
-
-**Ruralscapes loader (WP A3)** — verified on `DJI_0043`:
-
-```bash
-python scripts/inspect_data.py --root data/Ruralscapes \
-    --frame-glob "frames/DJI_0043/*.jpg" \
-    --mask-glob "labels/manual_labels/DJI_0043/*.png" \
-    --mask-format color
-```
-
-This prints the frame range, annotation count/spacing, mask encoding/unique ids,
-a class legend, and writes frame|mask side-by-side previews to
-`outputs/data_check/`. Pass `--n-samples N` to save overlays for the first N
-annotated frames (default 1). The verified `DJI_0043` run loaded 142 matched
-frame/mask pairs with median annotation spacing of 50 frames.
-The loader/inspection path can be checked without the full dataset using the
-committed fixture:
-
-```bash
-python scripts/inspect_data.py --root tests/fixtures/ruralscapes_demo \
-    --frame-glob "frames/*.ppm" --mask-glob "masks/*.ppm" \
-    --mask-format color --palette tests/fixtures/ruralscapes_demo/palette.yaml
-```
-
-The RGB palette in [`src/data/palette.yaml`](src/data/palette.yaml) follows
-`CLASS_COLORS_RGB` from the official SegProp preprocessing script; class-name
-ordering should still be treated carefully before reporting per-class results.
-
-## Phase B: core pipeline
-
-### B1/B2 — warp + occlusion visual check
-
-Warps the keyframe mask to the next 3 annotated frames and writes 4-panel
-images (keyframe GT / warped / target GT / validity mask) to `outputs/warp_check/`:
-
-```bash
-conda run -n uav-flowprop python scripts/check_warp.py \
-    --root data/Ruralscapes \
-    --frame-glob "frames/DJI_0043/*.jpg" \
-    --mask-glob "labels/manual_labels/DJI_0043/*.png" \
-    --mask-format color \
-    --n-targets 3 \
-    --device cuda
-```
-
-Validity mask: white = FB round-trip error < 1.5 px (valid); red = occluded /
-unreliable. Interior red marks arise from parallax, motion discontinuities, and
-true occlusions — not only at frame borders.
-
-### B3/B4/B5 — end-to-end propagation with mIoU table
-
-Propagates from the first annotated keyframe to N subsequent annotated targets,
-prints a distance / valid% / mIoU(all) / mIoU(valid) / per-class IoU table to
-the terminal, and saves 4-panel images plus two CSVs:
-
-- `outputs/propagation/results_all_pixels.csv` — IoU over all non-ignored pixels
-- `outputs/propagation/results_valid_pixels.csv` — IoU restricted to FB-valid pixels
-- `outputs/results/<video>/propagation_results/keyframe_<K>.csv` — per-pair table (`keyframe`, `target_frame`, `distance`, `valid_pct`, `miou_all`, `miou_valid`, `iou_class0`, `iou_class1`, …); this is the format C1 aggregates across all keyframes
-
-All settings come from `src/config/default.yaml`, so a bare command is enough:
-
-```bash
-conda run -n uav-flowprop python scripts/run_propagation.py
-```
-
-Override individual settings on the CLI:
-
-```bash
-conda run -n uav-flowprop python scripts/run_propagation.py \
-    --n-targets 10 --device cpu
-```
-
-Or supply an override YAML (deep-merged on top of defaults):
-
-```bash
-conda run -n uav-flowprop python scripts/run_propagation.py \
-    --config experiments/long_window.yaml
-```
-
-IoU is evaluated in two modes: **all pixels** (every non-ignored pixel, for
-fair baseline comparison) and **valid-only** (additionally excludes FB-invalid
-pixels, the primary quality measure). Flow model: SEA-RAFT spring-L
-(12 refinement iterations) — roughly 3× lower EPE than SegProp's FlowNet2
-on Sintel clean.
-
-## Phase C: scale, analyse, report
-
-### C1 — full-video batched run
-
-Propagates from **every** annotated keyframe to its next N annotated frames and
-records per-pair IoU for the whole video:
-
-```bash
-conda run --no-capture-output -n uav-flowprop python scripts/run_full_video.py
-```
-
-`--no-capture-output` is required so that progress lines appear in real time
-(without it, `conda run` buffers stdout and nothing shows until the process
-exits). Each keyframe's results are cached to
-`outputs/results/<video>/propagation_results/keyframe_<K>.csv`; reruns skip
-keyframes already computed (use `--force` to recompute). For the default config
-this is `outputs/results/DJI_0043/propagation_results/keyframe_<K>.csv`. All
-per-keyframe CSVs are concatenated, sorted by `(keyframe, distance)`, into:
-
-- `outputs/results/<video>/propagation_results/all_pairs.csv` — the complete full-video table
-  (`keyframe`, `target_frame`, `distance`, `valid_pct`, `miou_all`,
-  `miou_valid`, `iou_class0`, …) consumed by C2–C5.
-
-Useful flags: `--limit N` (process only the first N keyframes — handy for a
-quick partial run), `--n-targets` (annotated targets per keyframe),
-`--device cpu`, and `--config <YAML>`.
-
-### C2 — mIoU-vs-distance decay curve
-
-Aggregates the C1 full-video table by propagation distance and writes a summary
-CSV plus a plot:
-
-```bash
-conda run -n uav-flowprop python scripts/analyze_decay.py
-```
-
-Default outputs for `DJI_0043`:
-
-- `outputs/results/DJI_0043/analysis/decay_summary.csv` — count, mean, std,
-  min, and max for `miou_valid`, `miou_all`, and `valid_pct` per distance.
-- `outputs/results/DJI_0043/analysis/miou_decay.png` — mIoU(valid) decay curve
-  with a ±1 std band and the mean FB-valid pixel percentage.
-
-### C3 — difficulty heatmap over timeline
-
-Builds a keyframe-by-distance heatmap from the C1 table:
-
-```bash
-conda run -n uav-flowprop python scripts/analyze_heatmap.py
-```
-
-Default outputs for `DJI_0043`:
-
-- `outputs/results/DJI_0043/analysis/difficulty_heatmap_matrix.csv` — matrix
-  with keyframes as rows and propagation distances as columns.
-- `outputs/results/DJI_0043/analysis/difficulty_heatmap.png` — timeline
-  heatmap of `miou_valid`, where darker/low-value cells mark difficult
-  propagation intervals.
-
-Use `--metric miou_all` or `--metric valid_pct` to plot a different C1 metric.
-
-### C4 — per-class IoU breakdown
-
-Ranks semantic classes by valid-only IoU over the full-video table:
-
-```bash
-conda run -n uav-flowprop python scripts/analyze_per_class.py
-```
-
-Default outputs for `DJI_0043`:
-
-- `outputs/results/DJI_0043/analysis/per_class_iou.csv` — per-class count,
-  mean, std, min, and max IoU.
-- `outputs/results/DJI_0043/analysis/per_class_iou.png` — ranked bar chart of
-  mean valid-only IoU with standard-deviation bars.
-
-### C5 — failure-case visualisations
-
-Selects the worst propagation pairs by `miou_valid`, recomputes only those
-pairs, and writes side-by-side visual checks:
-
-```bash
-conda run --no-capture-output -n uav-flowprop python scripts/visualize_failures.py
-```
-
-Default outputs for `DJI_0043`:
-
-- `outputs/results/DJI_0043/failure_cases/failure_cases.md` — index and short
-  interpretation of the selected failures.
-- `outputs/results/DJI_0043/failure_cases/failure_<N>_kf<K>_to_<T>.png` —
-  keyframe GT / warped target / target GT / error-validity panel.
-
-By default C5 ignores pairs with fewer than 5% FB-valid pixels so the selected
-cases are visually meaningful. Use `--n 4` to inspect more cases,
-`--metric miou_all` to rank by all-pixel mIoU, or `--min-valid-pct 0` to include
-near-empty valid regions.
+Both live under `data/`, which is not tracked.
+
+## Report
+
+[`thesis-report-master/report.pdf`](thesis-report-master/report.pdf) is the full
+write-up: method, experiments, results and threats to validity. Every number in
+it is regenerated from a committed result file by `make_figures.py` and checked
+by `audit_numbers.py`, so the prose cannot drift from the data; the few
+measurements whose runs left no artifact are marked where they appear.
+
+## Related work in this repository
+
+Beyond the adaptive pipeline, the repository also contains a reproduction of
+SegProp-style offline propagation from human keyframes on Ruralscapes, and the
+single-keyframe decay analysis that preceded it (`scripts/run_full_video.py`
+and the `analyze_*.py` family). These share the warping and metric code under
+`src/` and are described in [`docs/`](docs/).
