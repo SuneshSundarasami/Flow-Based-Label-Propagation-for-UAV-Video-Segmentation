@@ -74,7 +74,6 @@ image_segmentation/    # UPerNet training, backbones, inference, benchmarking
 src/                   # flow wrappers, warping, FB check, metrics, data loaders
 scripts/               # dataset preparation and analysis entry points
 thesis-report-master/  # the project report (LaTeX source + PDF)
-docs/                  # technical reference, model comparison, literature notes
 splits/                # dataset split definitions
 third_party/           # SEA-RAFT, SSP, GeoSeg submodules
 tests/                 # pytest suite
@@ -178,4 +177,4 @@ Beyond the adaptive pipeline, the repository also contains a reproduction of
 SegProp-style offline propagation from human keyframes on Ruralscapes, and the
 single-keyframe decay analysis that preceded it (`scripts/run_full_video.py`
 and the `analyze_*.py` family). These share the warping and metric code under
-`src/` and are described in [`docs/`](docs/).
+`src/`.

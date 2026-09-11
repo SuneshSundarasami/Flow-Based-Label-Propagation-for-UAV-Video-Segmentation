@@ -5,8 +5,8 @@ adaptive_inference, so numbers are directly comparable to pipeline timings
 elsewhere in the repo.
 
 Val mIoU / per-class IoU are NOT computed here -- those come from the
-per-epoch training logs at runs/<run>/log.txt (see docs/model_comparison.md
-for how to parse them). This script only measures what the logs can't:
+per-epoch training logs at runs/<run>/log.txt, parsed by
+parse_training_logs.py. This script only measures what the logs can't:
 actual wall-clock inference cost and memory footprint on this GPU.
 
     image_segmentation/.venv/bin/python benchmark_models.py
