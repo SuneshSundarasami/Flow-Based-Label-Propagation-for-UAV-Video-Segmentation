@@ -1,0 +1,52 @@
+%!TEX root = ../report.tex
+\documentclass[report.tex]{subfiles}
+\begin{document}
+
+\chapter{Pipeline Configuration}
+\label{app:repro}
+
+\begin{table}[h]
+    \centering
+    \caption{Adaptive pipeline configuration as used for all experiments.}
+    \label{tab:config}
+    \footnotesize
+    \begin{tabular}{@{}llp{54mm}@{}}
+        \toprule
+        \textbf{Setting} & \textbf{Value} & \textbf{Note} \\
+        \midrule
+        backbone            & \texttt{convnext\_large} & any trained model \\
+        decoder             & UPerNet & bilinear upsampling to input size \\
+        flow backend        & \texttt{sea\_raft} & or \texttt{flownet2} \\
+        model config        & \texttt{spring-L} & 12 recurrent refinements \\
+        \texttt{scale}      & $-2$ & quarter internal resolution \\
+        $\theta$ (\texttt{fb\_threshold}) & \SI{1.5}{px} & round-trip error
+                                     above which a pixel is invalid \\
+        $K$ (\texttt{steps\_per\_chunk}) & 16 & 32 pairs per launch \\
+        precision           & \texttt{bf16} & \\
+        $\tau$ (\texttt{valid\_threshold}) & 0.95 & re-infer at or below this
+                                     coverage \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\chapter{Description of AI-Generated Content}
+\label{app:ai}
+
+As declared on the statement page, an AI assistant was used while preparing
+this report: Claude (Anthropic).
+
+\paragraph{Language.} The assistant checked grammar and spelling and proposed
+rephrasings where a passage was unclear or longer than it needed to be. The
+content, the claims and their interpretation are the author's.
+
+\paragraph{Typesetting.} It assisted with the \LaTeX{} source: table layout
+and formatting, float placement, and drawing the TikZ diagrams and flowcharts
+to the author's specification.
+
+\paragraph{Verification.} The author reviewed and verified all AI-assisted
+content: every number against the result file it comes from, every figure
+against the data it plots, and the wording of every section against what the
+experiments actually show. The author retains full responsibility for the
+content of this report.
+
+\end{document}

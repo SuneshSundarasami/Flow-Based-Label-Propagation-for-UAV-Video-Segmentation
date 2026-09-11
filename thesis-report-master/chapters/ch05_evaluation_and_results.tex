@@ -1,0 +1,244 @@
+%!TEX root = ../report.tex
+\documentclass[report.tex]{subfiles}
+\begin{document}
+
+\chapter{Evaluation and Results}
+\label{ch:results}
+
+The four sections follow the four experiments of Section~\ref{sec:timing}:
+choose the backbone, choose the flow backend, characterise the coverage
+threshold, then run the full validation split.
+
+\section{Segmentation Backbone}
+\label{sec:backbones}
+
+The encoders were trained behind the same UPerNet decoder under the recipe of
+Table~\ref{tab:trainhp}; Table~\ref{tab:backbones} compares them.
+
+\begin{table}[b]
+    \centering
+    \caption[Trained segmentation models]{Trained segmentation models.
+    Validation mIoU is at each model's best epoch on the $1024^2$ centre-crop
+    validation transform (Section~\ref{sec:metric}).}
+    \label{tab:backbones}
+    \footnotesize
+    \begin{tabular}{@{}lrrr@{}}
+        \toprule
+        \textbf{Model} & \textbf{Params} & \textbf{Inference} & \textbf{Val mIoU} \\
+        \midrule
+        ConvNeXt-Large & \SI{234.9}{M} & \LatConvnext~ms       & \textbf{\MIoUConvnextLarge} \\
+        Swin-Large     & \SI{233.9}{M} & \LatSwin~ms           & \MIoUSwinLarge \\
+        Hiera-Base+    & \SI{101.0}{M} & \LatHieraBasePlus~ms  & \MIoUHieraBasePlus \\
+        \bottomrule
+    \end{tabular}
+
+    \vspace{1mm}
+    \footnotesize\raggedright
+    Inference is a single-frame \SI{4}{K} measurement on the A100. That run wrote no
+    persistent log, so unlike every other number in this chapter these three
+    latencies come from project notes.
+\end{table}
+
+ConvNeXt-Large has both the highest mIoU and the lowest latency, so the
+pipeline uses it in every subsequent experiment. Swin-Large is within
+\num{0.009} mIoU but \SI{68}{ms} slower per frame, and Hiera-Base+ trades
+\num{0.036} mIoU for a \SI{57}{\percent} smaller parameter count
+(Figure~\ref{fig:segqual}).
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=\linewidth]{fig_deck_segmentation.jpg}
+    \caption[ConvNeXt-Large segmentation on a validation frame]{ConvNeXt-Large
+    on seq36 frame 100: buildings in red, road in purple, trees and vegetation
+    in green. The frame scores \num{0.917} mIoU against its dense ground
+    truth.}
+    \label{fig:segqual}
+\end{figure}
+
+\section{Optical Flow Backend}
+\label{sec:backends}
+
+SEA-RAFT and FlowNet2 were compared on \SeaRaftPairs{} matched
+keyframe-to-target propagation pairs scored against dense ground truth
+(Table~\ref{tab:backends}).
+
+\begin{table}[b]
+    \centering
+    \caption[Flow backend comparison]{SEA-RAFT against FlowNet2 on
+    \SeaRaftPairs{} matched Ruralscapes propagation pairs. Propagation mIoU is
+    the all-pixel figure, the valid-pixel row excludes pixels the FB check
+    rejects, and coverage is the mean fraction of pixels it accepts.}
+    \label{tab:backends}
+    \footnotesize
+    \begin{tabular}{@{}lrr@{}}
+        \toprule
+         & \textbf{SEA-RAFT} (default) & \textbf{FlowNet2} \\
+        \midrule
+        Inference per pair (\SI{4}{K}) & \SI{150}{ms}            & \SI{532}{ms} \\
+        Throughput                     & 6.7 pairs/s             & 1.9 pairs/s \\
+        Propagation mIoU               & \SeaRaftMIoUAll         & \FlowNetTwoMIoUAll \\
+        mIoU on valid pixels           & \SeaRaftMIoUValid       & \FlowNetTwoMIoUValid \\
+        Valid coverage                 & \SeaRaftCoverage\%      & \FlowNetTwoCoverage\% \\
+        \bottomrule
+    \end{tabular}
+
+    \vspace{1mm}
+    \footnotesize\raggedright
+    The per-pair timings are development measurements whose log was not
+    retained; the quality and coverage figures are re-derived from the
+    committed per-pair metrics files.
+\end{table}
+
+The backends are indistinguishable on quality: propagation mIoU differs by
+\num{0.0006}, valid-pixel mIoU by \num{0.0001} and coverage by
+\SI{0.4}{\percent}. SEA-RAFT is $3.6\times$ faster per pair and simpler to
+deploy, so the choice rests on speed and maintainability rather than accuracy.
+The result also confirms that \texttt{scale}${=}{-}2$
+(Section~\ref{sec:flowbackends}) costs under \num{0.01} mIoU while removing
+more than two thirds of the flow time.
+
+\paragraph{Why this experiment uses Ruralscapes.} It inherited a single-jump
+propagation harness built for that dataset and was not re-run on UAVid. The
+regime therefore differs from the pipeline's, one flow estimate spanning 50
+frames rather than 50 chained consecutive estimates, and Ruralscapes has
+twelve classes against UAVid's six, so these absolute mIoU values are not
+comparable with Section~\ref{sec:valresults}. The experiment is used only for
+the \emph{relative} ranking of two backends on identical pairs.
+
+\section{What the Coverage Threshold Controls}
+\label{sec:sweep}
+
+The threshold $\tau$ was swept over $\{0.75, 0.90, 0.95, 1.00\}$ on seq16 with
+ConvNeXt-Large and SEA-RAFT held fixed (Table~\ref{tab:sweep}).
+
+\begin{table}[t]
+    \centering
+    \caption[Coverage threshold sweep]{Threshold sweep on seq16, 901 frames,
+    ConvNeXt-Large with SEA-RAFT. $\tau = 1.00$ degenerates to the
+    model-every-frame baseline, since coverage can never exceed 1.}
+    \label{tab:sweep}
+    \footnotesize
+    \begin{tabular}{@{}lrrr@{}}
+        \toprule
+        \textbf{Threshold $\tau$} & \textbf{Model calls}
+        & \textbf{Speed vs.\ every frame} & \textbf{mIoU} \\
+        \midrule
+        0.75            &   5 & $2.2\times$ & 0.51 \\
+        0.90            &  23 & $2.1\times$ & 0.62 \\
+        0.95 (default)  &  71 & $1.9\times$ & 0.71 \\
+        1.00 (baseline) & 901 & $1.0\times$ & 0.76 \\
+        \bottomrule
+    \end{tabular}
+
+    \vspace{1mm}
+    \footnotesize\raggedright
+    The $\tau = 0.75$ and $\tau = 0.90$ rows are development runs whose
+    per-frame logs were not retained.
+\end{table}
+
+\paragraph{The threshold controls quality, not speed.} This follows from the
+cost structure of Figure~\ref{fig:system}. Dropping from 901 model calls to 71
+removes \SI{92}{\percent} of the inference work but yields only $1.9\times$,
+because flow runs on every frame regardless; going further, to 5 calls, moves
+only to $2.2\times$ while costing \num{0.20} mIoU. Equivalently, raising
+$\tau$ from 0.75 to 1.00 lifts mIoU from \num{0.51} to \num{0.76} for under
+\SI{15}{\percent} more runtime. There is therefore no reason to operate at a
+low threshold, and $\tau = 0.95$ is used throughout.
+
+\section{Validation Split Results}
+\label{sec:valresults}
+
+Baseline and hybrid were run over all \NumSeq{} UAVid validation sequences,
+\NumFrames{} frames, at $\tau = 0.95$ (Table~\ref{tab:valresults}).
+
+\begin{table}[!htb]
+    \centering
+    \caption[Baseline against adaptive hybrid on the validation
+    split]{Baseline against adaptive hybrid on all \NumSeq{} UAVid validation
+    sequences, $\tau = 0.95$, ConvNeXt-Large with SEA-RAFT. Times are
+    wall-clock over all 901 frames of each sequence; mIoU is the mean over that
+    sequence's ten dense ground-truth frames, scored on identical pixel sets
+    for both methods.}
+    \label{tab:valresults}
+    \footnotesize
+    \begin{tabular}{@{}lrrrrrr@{}}
+        \toprule
+        \textbf{Sequence} & \textbf{Model calls} & \textbf{Baseline}
+        & \textbf{Hybrid} & \textbf{Speedup}
+        & \textbf{Base mIoU} & \textbf{Hyb.\ mIoU} \\
+        \midrule
+        seq16 &  71 & \SI{337}{s} & \SI{181}{s} & $1.86\times$ & 0.763 & 0.711 \\
+        seq17 & 208 & \SI{334}{s} & \SI{210}{s} & $1.59\times$ & 0.780 & 0.758 \\
+        seq18 &  76 & \SI{334}{s} & \SI{184}{s} & $1.82\times$ & 0.835 & 0.813 \\
+        seq19 & 194 & \SI{364}{s} & \SI{222}{s} & $1.64\times$ & 0.744 & 0.728 \\
+        seq20 & 474 & \SI{363}{s} & \SI{279}{s} & $1.30\times$ & 0.773 & 0.739 \\
+        seq36 & 131 & \SI{365}{s} & \SI{211}{s} & $1.73\times$ & 0.842 & 0.831 \\
+        seq37 &  87 & \SI{335}{s} & \SI{189}{s} & $1.77\times$ & 0.759 & 0.708 \\
+        \midrule
+        \textbf{All} & \textbf{\MeanCalls} & \textbf{\SI{\BaseTime}{s}}
+        & \textbf{\SI{\HybTime}{s}} & $\mathbf{\Speedup\times}$
+        & \textbf{0.785} & \textbf{0.755} \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+The hybrid is \Speedup$\times$ faster than model-every-frame inference,
+retains \Retention\% of the baseline mIoU (\HybMIoU{} against \BaseMIoU{}),
+and calls the model on \PctModel\% of frames, \TotalCalls{} calls across
+\NumFrames{} frames.
+
+\paragraph{Model calls follow motion, without per-sequence tuning.} Under one
+fixed threshold the high-motion seq20 uses 474 model calls and the calm seq37
+uses 87. At that extreme the speedup falls to $1.30\times$, the lowest in the
+table, but quality holds at \num{0.739} against a \num{0.773} baseline: the
+cost of motion is paid in speed rather than accuracy. On the propagated frame
+of Figure~\ref{fig:hybqual} the gap to the baseline is \num{0.005} mIoU.
+
+\begin{figure}[!htb]
+    \centering
+    \includegraphics[width=\linewidth]{fig_deck_hybrid.jpg}
+    \caption[Baseline against adaptive hybrid on a propagated frame]{Left:
+    ConvNeXt-Large on every frame. Right: the adaptive hybrid at
+    $\tau = 0.95$ on the same frame, labelled by propagation rather than
+    inference (\texttt{src=flow}) at \SI{97}{\percent} coverage. The mIoU
+    difference is \num{0.005}.}
+    \label{fig:hybqual}
+\end{figure}
+
+\section{Where Quality Is Lost}
+\label{sec:whereloss}
+
+Propagation costs \num{0.030} mIoU in aggregate, from \BaseMIoU{} to
+\HybMIoU, concentrated on small moving objects, principally \texttt{person}
+and \texttt{vehicle}. Three properties combine to produce this. First, mIoU
+averages over classes without weighting by pixel count
+(Section~\ref{sec:metric}), so a \texttt{person} region of a few hundred
+pixels loses a large \emph{fraction} of its IoU to a boundary ring a few
+pixels wide. Second, every step resamples with nearest-neighbour
+interpolation, adding a rounding error at every boundary that accumulates
+along a run, invisible to the consistency check because the flow fields agree
+while the boundary drifts. Third, independently moving objects cause the
+occlusion that breaks correspondence. A rejected pixel keeps its propagated
+label regardless: the check decides \emph{when to re-infer}, not what to do
+with one bad pixel.
+
+\section{Threats to Validity}
+\label{sec:threats}
+
+\begin{itemize}
+    \item \textbf{Quality rests on \NumGT{} evaluation points.} Quality is
+          measured at ten frames per sequence while timing covers all 901. The
+          comparison is paired, so the \emph{difference} is well founded, but
+          the sample is small. Early stopping also selected each checkpoint on
+          these frames, so absolute mIoU is optimistic.
+    \item \textbf{Single dataset, one altitude regime, one seed.} All pipeline
+          results are UAVid; the flow-backend comparison is Ruralscapes, in a
+          different propagation regime. Each backbone was trained once, so
+          Table~\ref{tab:backbones} supports a ranking but not a significance
+          claim.
+    \item \textbf{One hardware configuration.} Every timing comes from the
+          same A100, and the speedup depends on the ratio of model cost to
+          flow cost, so it would differ on an embedded accelerator.
+\end{itemize}
+
+\end{document}

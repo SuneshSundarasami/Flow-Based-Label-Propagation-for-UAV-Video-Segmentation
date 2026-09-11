@@ -1,0 +1,106 @@
+%!TEX root = ../report.tex
+\documentclass[report.tex]{subfiles}
+\begin{document}
+
+\chapter{State of the Art}
+\label{ch:sota}
+
+\section{Aerial Video Segmentation Datasets}
+\label{sec:sota-data}
+
+\textbf{UAVid}~\cite{uavid2020} is an urban-drone dataset of oblique
+\SI{4}{K} video, labelled densely at intervals rather than continuously. Among
+its stated challenges are large scale variation, moving-object recognition and
+temporal consistency across frames; the last is the property flow propagation
+exploits, which is why it is the primary dataset here.
+
+\textbf{Ruralscapes}, introduced with SegProp~\cite{segprop2020}, is a
+\SI{4}{K} aerial dataset of rural scenes whose dense labels come twice as
+often as UAVid's, every 50 frames. That is what makes it usable for the
+single-jump propagation experiments of Section~\ref{sec:backends}.
+
+\section{Semantic Segmentation Architectures}
+\label{sec:sota-arch}
+
+The models here follow the standard encoder-decoder pattern for dense
+prediction: a backbone reduces the image to a multi-scale feature pyramid, and
+a decoder fuses those scales into per-pixel logits.
+
+The decoder throughout is \textbf{UPerNet}~\cite{upernet2018}, which combines
+the Pyramid Pooling Module of \textbf{PSPNet}~\cite{pspnet2017}, adaptive
+average pooling at several grid resolutions, with a Feature Pyramid Network
+top-down fusion path. It is backbone-agnostic, so encoders swap without
+changing the head.
+
+Four encoder families were considered. \textbf{ConvNeXt}~\cite{convnext2022}
+modernises a ResNet toward transformer design choices while remaining
+convolutional, and is strongest here. \textbf{Swin}~\cite{swin2021} is a
+hierarchical transformer built from shifted local-window attention, linear in
+image size. \textbf{SegFormer}~\cite{segformer2021} pairs a hierarchical
+transformer encoder with a minimal all-MLP decoder.
+\textbf{Hiera}~\cite{hiera2023} removes architectural extras from a
+hierarchical vision transformer and relies on masked-autoencoder pretraining
+instead; it is the image encoder of \textbf{SAM~2}~\cite{sam2_2024}, whose
+public checkpoints supply an initialisation at no training cost.
+
+\section{Optical Flow Estimation}
+\label{sec:sota-flow}
+
+Optical flow assigns to each pixel of one frame a displacement to its
+corresponding location in another. Four steps of that lineage matter here.
+
+\textbf{Variational methods.} Brox et~al.~\cite{brox2004} formulate flow as
+energy minimisation over brightness constancy, gradient constancy and a
+discontinuity-preserving smoothness term, solved by nested fixed-point
+iterations implementing coarse-to-fine warping. This is the classical reference
+for the warping principle mask propagation rests on.
+
+\textbf{Occlusion detection by round trip.} Following a pixel forward and then
+back should return it near its origin; if it does not, the correspondence is
+unreliable. Sundaram, Brox and Keutzer~\cite{sundaram2010} use this
+forward-backward criterion to filter point trajectories, and it is the direct
+ancestor of the validity check used here.\footnote{The criterion is often
+attributed to Brox et~al.~\cite{brox2004}, which introduces the variational
+warping formulation; the forward-backward occlusion test appears in the later
+trajectory work~\cite{sundaram2010}.}
+
+\textbf{Learned flow.} FlowNet~\cite{dosovitskiy2015} showed that end-to-end
+CNN flow estimation was viable. \textbf{FlowNet2}~\cite{flownet2_2017} made it
+competitive by stacking FlowNetC, FlowNetS and FlowNetSD into a cascade
+evaluated in one forward pass; it is the backend SegProp uses, which is why it
+is retained here for comparison.
+
+\textbf{Iterative refinement.} \textbf{RAFT}~\cite{raft2020} extracts per-pixel
+features, builds an all-pairs 4D correlation volume, and refines a flow field
+with a recurrent unit that looks up that volume.
+\textbf{SEA-RAFT}~\cite{searaft2024} simplifies and accelerates RAFT while
+improving accuracy, reaching \SI{3.69}{px} endpoint error on Spring, a
+\SI{22.9}{\percent} error reduction over prior published results. It is the
+default backend here, though its correlation volume scales quadratically with
+resolution and becomes the dominant engineering constraint at \SI{4}{K}
+(Section~\ref{sec:flowbackends}).
+
+\section{Flow-Based Label Propagation and the Gap}
+\label{sec:sota-prop}
+
+\textbf{SegProp}~\cite{segprop2020} is the closest prior work. Annotators label
+roughly \SI{2}{\percent} of a video's frames and SegProp propagates those
+labels to the rest along FlowNet2 flow by iterative class voting; the
+propagated labels then train a segmentation network that outperforms its fully
+supervised counterpart. Keyframes are selected at fixed intervals, independently
+of scene content.
+
+Two gaps follow, and together they define this project. The first is
+\emph{where the starting mask comes from}. Prior work starts from a frame a
+human has labelled, which is possible offline but not in flight. Here the
+starting mask has to be a model prediction, so it is imperfect to begin with,
+it is the expensive part of the system, and something has to decide when to
+pay for it. The second is \emph{when to compute a new one}. Picking keyframes
+at a fixed interval ignores what the camera is doing: one interval wastes
+model calls during a hover and falls behind during fast motion. A trigger that
+watches the scene instead is the alternative, and the forward-backward check
+costs nothing extra, because propagation has already computed both flow
+directions. Prior work also measures label quality rather than time, and time
+is what decides whether propagating is worth doing at all.
+
+\end{document}

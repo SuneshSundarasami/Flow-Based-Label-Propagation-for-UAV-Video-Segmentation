@@ -1,0 +1,140 @@
+%
+% LaTeX2e Style for MAS R&D and master thesis reports
+% Author: Argentina Ortega Sainz, Hochschule Bonn-Rhein-Sieg, Germany
+% Please feel free to send issues, suggestions or pull requests to:
+% https://github.com/mas-group/project-report
+% Based on the template created by Ronni Hartanto in 2003
+%
+
+% The class configures hyperref inside \AtBeginDocument, which is too late for
+% `colorlinks` to suppress hyperref's link borders -- every cross-reference then
+% prints inside a red box. Passing the options at load time fixes it.
+\PassOptionsToPackage{colorlinks=true,allcolors=black,pdfborder={0 0 0}}{hyperref}
+
+% Left at the class default `twosides`. The blank versos it inserts before the
+% copyright, statement, abstract, acknowledgements and contents pages are part
+% of the template's front matter, not padding: the shipped template produces
+% exactly the same five, and the mirrored margins and alternating running heads
+% are meant for a bound, double-sided report.
+\documentclass[rnd]{mas_report}
+
+% ****************************************************
+% REPORT METADATA
+% ****************************************************
+\author{Sunesh Praveen Raja Sundarasami}
+\title{Flow-Based Label Propagation for UAV Video Segmentation}
+
+\supervisors{%
+Prof.\ Dr.\ Sebastian Houben
+}
+\date{September 2026}
+
+\subject{Adaptive flow-guided inference for UAV video semantic segmentation}
+\keywords{semantic segmentation; optical flow; label propagation;
+UAV video; adaptive inference; UAVid}
+
+% ****************************************************
+% ADDITIONAL PACKAGES
+% The document class loads graphicx, booktabs, subcaption, multirow,
+% rotating, hyperref and microtype, but none of the following.
+% ****************************************************
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,calc,fit,backgrounds,shapes.geometric,patterns}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+\usepackage{siunitx}
+\sisetup{detect-weight=true,detect-family=true,group-separator={,}}
+\usepackage[ruled,vlined,linesnumbered]{algorithm2e}
+\usepackage{xurl}
+\usepackage{amsmath}
+
+\graphicspath{{images/}{../images/}}
+
+% Every number quoted in the body is defined here, regenerated from the result
+% files by scripts/make_figures.py, so the prose cannot drift from the data.
+\input{generated_numbers}
+
+% Consistent colours for the figures and diagrams
+\definecolor{cModel}{HTML}{1B4F72}
+\definecolor{cFlow}{HTML}{B9770E}
+\definecolor{cAccent}{HTML}{7B241C}
+\definecolor{cMuted}{HTML}{5D6D7E}
+\definecolor{cLight}{HTML}{EAEDED}
+
+% Shared TikZ styles for the pipeline diagrams.
+%
+% Arrow policy, applied without exception in every flowchart: connectors run
+% only horizontally or vertically, are joined with rounded corners, and carry
+% one small arrowhead at the destination. Branches fan out from, and merge
+% into, an explicit coordinate, so a split never produces two arrowheads on
+% the same node face and no connector is ever drawn diagonally.
+\tikzset{
+  block/.style   = {draw, rounded corners=2pt, align=center,
+                    font=\footnotesize, inner sep=4pt, minimum height=8mm},
+  modelblk/.style= {block, draw=cModel, fill=cModel!8, text=cModel},
+  flowblk/.style = {block, draw=cFlow, fill=cFlow!10, text=cFlow!70!black},
+  plainblk/.style= {block, draw=cMuted, fill=cLight},
+  gate/.style    = {draw=cAccent, fill=cAccent!8, diamond, aspect=2.2,
+                    align=center, font=\footnotesize, inner sep=1pt},
+  % fl  = a connector that ends in an arrowhead
+  % seg = a connector segment that feeds a junction, so carries no head
+  fl/.style      = {-{Latex[length=1.7mm,width=1.4mm]}, draw=cMuted,
+                    line width=0.65pt, rounded corners=1.4mm},
+  seg/.style     = {fl, -},
+  lbl/.style     = {font=\scriptsize\itshape, text=cMuted, inner sep=2pt},
+  jn/.style      = {circle, fill=cMuted, inner sep=0pt, minimum size=1.5mm},
+}
+
+\begin{document}
+\frontmatter
+
+\maketitle
+
+\cleardoublepage
+\copyrightpage{2026}
+
+%----------------------------------------------------------------------------------------
+%	PREFACE
+%----------------------------------------------------------------------------------------
+\pagestyle{plain}
+\cleardoublepage
+\statementpage
+
+\subfile{chapters/abstract}
+\subfile{chapters/acknowledgment}
+
+\tableofcontents
+
+% A report with ten figures and nine tables does not need its own indexes for
+% them; the template ships \listoffigures and \listoftables commented out.
+
+%-------------------------------------------------------------------------------
+%	CONTENT CHAPTERS
+%-------------------------------------------------------------------------------
+\mainmatter % Begin numeric (1,2,3...) page numbering
+
+\pagestyle{mainmatter}
+
+\subfile{chapters/ch01_introduction}
+\subfile{chapters/ch02_stateoftheart}
+\subfile{chapters/ch03_methodology}
+\subfile{chapters/ch04_solution}
+\subfile{chapters/ch05_evaluation_and_results}
+\subfile{chapters/ch06_conclusion}
+
+%-------------------------------------------------------------------------------
+%	APPENDICES
+%-------------------------------------------------------------------------------
+\begin{appendices}
+    \subfile{chapters/appendix}
+\end{appendices}
+
+\backmatter
+
+%-------------------------------------------------------------------------------
+%	BIBLIOGRAPHY
+%-------------------------------------------------------------------------------
+\bibliographystyle{IEEEtran}
+\bibliography{bibliography}
+
+\end{document}

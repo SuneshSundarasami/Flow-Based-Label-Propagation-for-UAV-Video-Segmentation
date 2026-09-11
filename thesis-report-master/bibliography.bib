@@ -1,0 +1,201 @@
+% ============================================================================
+% Bibliography -- Flow-Based Label Propagation for UAV Video Segmentation
+% Every entry below was checked against the publisher / proceedings record.
+% ============================================================================
+
+% ---------------------------------------------------------------- datasets --
+@Article{uavid2020,
+  author  = {Lyu, Ye and Vosselman, George and Xia, Gui-Song and Yilmaz, Alper
+             and Yang, Michael Ying},
+  title   = {{UAVid}: A semantic segmentation dataset for {UAV} imagery},
+  journal = {{ISPRS} Journal of Photogrammetry and Remote Sensing},
+  volume  = {165},
+  pages   = {108--119},
+  year    = {2020},
+  doi     = {10.1016/j.isprsjprs.2020.05.009},
+}
+
+@InProceedings{segprop2020,
+  author    = {Marcu, Alina and Licaret, Vlad and Costea, Dragos
+               and Leordeanu, Marius},
+  title     = {Semantics through Time: Semi-supervised Segmentation of Aerial
+               Videos with Iterative Label Propagation},
+  booktitle = {Proceedings of the Asian Conference on Computer Vision (ACCV)},
+  pages     = {537--552},
+  year      = {2020},
+  doi       = {10.1007/978-3-030-69525-5_32},
+  note      = {arXiv:2010.01910},
+}
+
+% ------------------------------------------------------------ optical flow --
+@InProceedings{brox2004,
+  author    = {Brox, Thomas and Bruhn, Andres and Papenberg, Nils
+               and Weickert, Joachim},
+  title     = {High Accuracy Optical Flow Estimation Based on a Theory for
+               Warping},
+  booktitle = {Proceedings of the European Conference on Computer Vision (ECCV)},
+  series    = {Lecture Notes in Computer Science},
+  volume    = {3024},
+  pages     = {25--36},
+  publisher = {Springer},
+  year      = {2004},
+  doi       = {10.1007/978-3-540-24673-2_3},
+}
+
+@InProceedings{sundaram2010,
+  author    = {Sundaram, Narayanan and Brox, Thomas and Keutzer, Kurt},
+  title     = {Dense Point Trajectories by {GPU}-Accelerated Large Displacement
+               Optical Flow},
+  booktitle = {Proceedings of the European Conference on Computer Vision (ECCV)},
+  pages     = {438--451},
+  year      = {2010},
+  doi       = {10.1007/978-3-642-15552-9_32},
+}
+
+@InProceedings{dosovitskiy2015,
+  author    = {Dosovitskiy, Alexey and Fischer, Philipp and Ilg, Eddy and
+               Haeusser, Philip and Hazirbas, Caner and Golkov, Vladimir and
+               van der Smagt, Patrick and Cremers, Daniel and Brox, Thomas},
+  title     = {{FlowNet}: Learning Optical Flow with Convolutional Networks},
+  booktitle = {Proceedings of the IEEE International Conference on Computer
+               Vision (ICCV)},
+  pages     = {2758--2766},
+  year      = {2015},
+  doi       = {10.1109/ICCV.2015.316},
+}
+
+@InProceedings{flownet2_2017,
+  author    = {Ilg, Eddy and Mayer, Nikolaus and Saikia, Tonmoy and Keuper,
+               Margret and Dosovitskiy, Alexey and Brox, Thomas},
+  title     = {{FlowNet} 2.0: Evolution of Optical Flow Estimation with Deep
+               Networks},
+  booktitle = {Proceedings of the IEEE Conference on Computer Vision and
+               Pattern Recognition (CVPR)},
+  pages     = {2462--2470},
+  year      = {2017},
+  doi       = {10.1109/CVPR.2017.179},
+}
+
+@InProceedings{raft2020,
+  author    = {Teed, Zachary and Deng, Jia},
+  title     = {{RAFT}: Recurrent All-Pairs Field Transforms for Optical Flow},
+  booktitle = {Proceedings of the European Conference on Computer Vision (ECCV)},
+  pages     = {402--419},
+  year      = {2020},
+  doi       = {10.1007/978-3-030-58536-5_24},
+  note      = {Best Paper Award},
+}
+
+@InProceedings{searaft2024,
+  author    = {Wang, Yihan and Lipson, Lahav and Deng, Jia},
+  title     = {{SEA-RAFT}: Simple, Efficient, Accurate {RAFT} for Optical Flow},
+  booktitle = {Proceedings of the European Conference on Computer Vision (ECCV)},
+  pages     = {36--54},
+  year      = {2024},
+  doi       = {10.1007/978-3-031-72667-5_3},
+  note      = {Oral, Best Paper Award candidate; arXiv:2405.14793},
+}
+
+% ------------------------------------------------------- label propagation --
+@InProceedings{zhu2019,
+  author    = {Zhu, Yi and Sapra, Karan and Reda, Fitsum A. and Shih, Kevin J.
+               and Newsam, Shawn and Tao, Andrew and Catanzaro, Bryan},
+  title     = {Improving Semantic Segmentation via Video Propagation and Label
+               Relaxation},
+  booktitle = {Proceedings of the IEEE/CVF Conference on Computer Vision and
+               Pattern Recognition (CVPR)},
+  pages     = {8856--8865},
+  year      = {2019},
+  doi       = {10.1109/CVPR.2019.00906},
+}
+
+% ----------------------------------------------- segmentation architectures -
+@InProceedings{pspnet2017,
+  author    = {Zhao, Hengshuang and Shi, Jianping and Qi, Xiaojuan and Wang,
+               Xiaogang and Jia, Jiaya},
+  title     = {Pyramid Scene Parsing Network},
+  booktitle = {Proceedings of the IEEE Conference on Computer Vision and
+               Pattern Recognition (CVPR)},
+  pages     = {2881--2890},
+  year      = {2017},
+  doi       = {10.1109/CVPR.2017.660},
+}
+
+@InProceedings{upernet2018,
+  author    = {Xiao, Tete and Liu, Yingcheng and Zhou, Bolei and Jiang, Yuning
+               and Sun, Jian},
+  title     = {Unified Perceptual Parsing for Scene Understanding},
+  booktitle = {Proceedings of the European Conference on Computer Vision (ECCV)},
+  pages     = {418--434},
+  year      = {2018},
+  doi       = {10.1007/978-3-030-01228-1_26},
+}
+
+@InProceedings{swin2021,
+  author    = {Liu, Ze and Lin, Yutong and Cao, Yue and Hu, Han and Wei, Yixuan
+               and Zhang, Zheng and Lin, Stephen and Guo, Baining},
+  title     = {{Swin} Transformer: Hierarchical Vision Transformer using
+               Shifted Windows},
+  booktitle = {Proceedings of the IEEE/CVF International Conference on Computer
+               Vision (ICCV)},
+  pages     = {10012--10022},
+  year      = {2021},
+  doi       = {10.1109/ICCV48922.2021.00986},
+}
+
+@InProceedings{segformer2021,
+  author    = {Xie, Enze and Wang, Wenhai and Yu, Zhiding and Anandkumar, Anima
+               and Alvarez, Jose M. and Luo, Ping},
+  title     = {{SegFormer}: Simple and Efficient Design for Semantic
+               Segmentation with Transformers},
+  booktitle = {Advances in Neural Information Processing Systems (NeurIPS)},
+  volume    = {34},
+  pages     = {12077--12090},
+  year      = {2021},
+}
+
+@InProceedings{convnext2022,
+  author    = {Liu, Zhuang and Mao, Hanzi and Wu, Chao-Yuan and Feichtenhofer,
+               Christoph and Darrell, Trevor and Xie, Saining},
+  title     = {A {ConvNet} for the 2020s},
+  booktitle = {Proceedings of the IEEE/CVF Conference on Computer Vision and
+               Pattern Recognition (CVPR)},
+  pages     = {11976--11986},
+  year      = {2022},
+  doi       = {10.1109/CVPR52688.2022.01167},
+}
+
+@InProceedings{hiera2023,
+  author    = {Ryali, Chaitanya and Hu, Yuan-Ting and Bolya, Daniel and Wei,
+               Chen and Fan, Haoqi and Huang, Po-Yao and Aggarwal, Vaibhav and
+               Chowdhury, Arkabandhu and Poursaeed, Omid and Hoffman, Judy and
+               Malik, Jitendra and Li, Yanghao and Feichtenhofer, Christoph},
+  title     = {{Hiera}: A Hierarchical Vision Transformer without the
+               Bells-and-Whistles},
+  booktitle = {Proceedings of the 40th International Conference on Machine
+               Learning (ICML)},
+  series    = {Proceedings of Machine Learning Research},
+  volume    = {202},
+  pages     = {29441--29454},
+  year      = {2023},
+}
+
+@Article{sam2_2024,
+  author  = {Ravi, Nikhila and Gabeur, Valentin and Hu, Yuan-Ting and Hu,
+             Ronghang and Ryali, Chaitanya and Ma, Tengyu and Khedr, Haitham
+             and Radle, Roman and Rolland, Chloe and Gustafson, Laura and
+             Mintun, Eric and Pan, Junting and Alwala, Kalyan Vasudev and
+             Carion, Nicolas and Wu, Chao-Yuan and Girshick, Ross and
+             Dollar, Piotr and Feichtenhofer, Christoph},
+  title   = {{SAM} 2: Segment Anything in Images and Videos},
+  journal = {arXiv preprint arXiv:2408.00714},
+  year    = {2024},
+}
+
+% ---------------------------------------------------------------- training --
+@InProceedings{adamw2019,
+  author    = {Loshchilov, Ilya and Hutter, Frank},
+  title     = {Decoupled Weight Decay Regularization},
+  booktitle = {International Conference on Learning Representations (ICLR)},
+  year      = {2019},
+}

@@ -1,0 +1,471 @@
+%!TEX root = ../report.tex
+\documentclass[report.tex]{subfiles}
+\begin{document}
+
+\chapter{Solution}
+\label{ch:solution}
+
+\section{System Overview}
+\label{sec:overview}
+
+The system has three parts: a segmentation model that labels any frame
+accurately but expensively, an optical-flow model that moves an existing mask
+to the next frame cheaply, and a controller that chooses between them
+(Figure~\ref{fig:system}).
+
+\begin{figure}[t]
+    \centering
+    \begin{tikzpicture}
+        % Spacing is measured between node BORDERS, never between centres, so
+        % every connector keeps a fixed visible length whatever the height of
+        % the boxes it joins. The chain is anchored on `flow` at the origin and
+        % the frame pair is placed above it.
+        \node[flowblk,  text width=46mm] (flow) at (0,0)
+            {\textbf{SEA-RAFT}: forward $t{\to}t{+}1$\\
+             \emph{and} backward $t{+}1{\to}t$};
+        \node[flowblk,  text width=46mm, below=7mm of flow] (warp)
+            {backward-warp the mask,\\then forward-backward check};
+        \node[flowblk,  text width=46mm, below=7mm of warp] (cov)
+            {coverage $\gamma_{t+1}$, AND-accumulated};
+        \node[gate, text width=17mm, below=9mm of cov] (gate)
+            {$\gamma_{t+1} \le \tau$?};
+        \node[modelblk, text width=30mm, left=17mm of gate] (model)
+            {\textbf{segmentation}\\\textbf{model}: re-infer,\\
+             reset $\gamma \!\leftarrow\! 1$};
+        \node[flowblk, text width=27mm, right=17mm of gate] (accept)
+            {accept the\\warped mask};
+
+        % The frame pair, 9mm of clear arrow above the dashed box.
+        \coordinate (fin) at ($(flow.north)+(0,9mm)$);
+        \node[plainblk, text width=20mm, anchor=south] (ft)
+            at ($(fin)+(-23mm,7mm)$) {frame $I_t$};
+        \node[plainblk, text width=20mm, anchor=south] (ft1)
+            at ($(fin)+( 23mm,7mm)$) {frame $I_{t+1}$};
+
+        % emit sits below whichever branch hangs lowest, on the centre line.
+        \node[plainblk, text width=32mm, anchor=north] (emit)
+            at ($(gate |- model.south)+(0,-15mm)$) {emit the mask for $I_{t+1}$};
+        \coordinate (mrg) at ($(emit.north)+(0,7mm)$);
+
+        \draw[seg] (ft.south)  |- (fin);
+        \draw[seg] (ft1.south) |- (fin);
+        \draw[fl]  (fin) -- (flow.north);
+        \node[jn] at (fin) {};
+
+        \draw[fl] (flow) -- (warp);
+        \draw[fl] (warp) -- (cov);
+        \draw[fl] (cov)  -- (gate);
+
+        \draw[fl] (gate.west) -- node[lbl, above] {yes} (model.east);
+        \draw[fl] (gate.east) -- node[lbl, above] {no}  (accept.west);
+
+        \draw[seg] (model.south)  |- (mrg);
+        \draw[seg] (accept.south) |- (mrg);
+        \draw[fl]  (mrg) -- (emit.north);
+        \node[jn] at (mrg) {};
+
+        % Loop back for the next frame. Both ends must share one channel x, or
+        % the "vertical" run is drawn diagonally: emit.west and ft.west do not
+        % line up. The channel clears `model`, the widest block on this side.
+        \coordinate (loopx) at ($(model.west)-(9mm,0)$);
+        \draw[fl] (emit.west) -- (loopx |- emit.west)
+                  -- (loopx |- ft.west) -- (ft.west);
+        \node[lbl, rotate=90, anchor=south]
+            at ($(loopx |- ft.west)!0.5!(loopx |- emit.west)-(1.5mm,0)$)
+            {next frame};
+
+        \begin{scope}[on background layer]
+            \node[draw=cFlow, dashed, rounded corners=3pt, inner sep=3mm,
+                  fit=(flow)(warp)(cov)] (flowbox) {};
+        \end{scope}
+        \node[lbl, anchor=north west, text width=30mm, align=left,
+              text=cFlow!70!black] at ($(flowbox.north east)+(2mm,0)$)
+            {paid on \emph{every} frame,\\before the decision\\can be made};
+        % Above the model block, not beside it: to its left lies the loop-back
+        % connector and its label.
+        \node[lbl, anchor=south, text width=30mm, align=center, text=cModel]
+            at ($(model.north)+(0,1.5mm)$) {paid on \PctModel\% of frames};
+    \end{tikzpicture}
+    \caption[Adaptive hybrid system overview]{The adaptive hybrid pipeline.
+    Everything in the dashed box runs for each consecutive frame pair
+    \emph{before} the threshold test, so its cost is unconditional; only the
+    model call is conditional. That asymmetry, not the threshold, bounds the
+    achievable speedup (Section~\ref{sec:sweep}).}
+    \label{fig:system}
+\end{figure}
+
+\section{Segmentation Models}
+\label{sec:segmodels}
+
+Every model shares one shape: an encoder producing a four-level feature
+pyramid at strides 4, 8, 16 and 32, and a UPerNet decoder~\cite{upernet2018}
+fusing those levels into per-pixel logits, bilinearly upsampled to the input
+resolution (Figure~\ref{fig:arch}). Every wrapper enforces the same contract,
+input $(B, 3, H, W)$ and output $(B, C, H, W)$, which makes the backbones
+interchangeable. Backbones start pretrained, from ImageNet-derived UPerNet
+weights for ConvNeXt and Swin and from SAM~2~\cite{sam2_2024} for Hiera, and
+only the six-class classifier trains from scratch, so convergence takes tens
+rather than hundreds of epochs.
+
+\begin{figure}[t]
+    \centering
+    \begin{tikzpicture}
+        % Border-relative spacing: a fixed 7mm of visible arrow between boxes.
+        \node[plainblk, text width=60mm] (in) at (0,0)
+            {image $(B,3,H,W)$};
+        \node[modelblk, text width=60mm, below=7mm of in] (enc)
+            {\textbf{encoder}: ConvNeXt / Swin / Hiera / MiT};
+        \node[plainblk, text width=60mm, below=7mm of enc] (pyr)
+            {feature pyramid $C_1 \dots C_4$, strides 4, 8, 16, 32};
+        \node[modelblk, text width=60mm, below=7mm of pyr] (ppm)
+            {\textbf{PPM} on $C_4$: pool at
+             $1{\times}1, 2{\times}2, 3{\times}3, 6{\times}6$,\\
+             then convolve, upsample and concatenate};
+        \node[modelblk, text width=60mm, below=7mm of ppm] (fpn)
+            {\textbf{FPN} top-down: add into $C_3, C_2, C_1$,\\
+             fuse all levels, $1{\times}1$ classifier};
+        \node[plainblk, text width=60mm, below=7mm of fpn] (out)
+            {logits $(B,C,H,W)$ after bilinear ${\times}4$};
+
+        \draw[fl] (in)  -- (enc);
+        \draw[fl] (enc) -- (pyr);
+        \draw[fl] (pyr) -- (ppm);
+        \draw[fl] (ppm) -- (fpn);
+        \draw[fl] (fpn) -- (out);
+
+        % lateral skip connections, routed down the left margin
+        \draw[fl] (pyr.west) -- ($(pyr.west)-(10mm,0)$)
+                  -- ($(fpn.west)-(10mm,0)$) -- (fpn.west);
+        \node[lbl, rotate=90, anchor=south]
+            at ($(pyr.west)!0.5!(fpn.west)-(11.5mm,0)$)
+            {$C_1 \dots C_3$ laterals};
+        % Balance the bounding box against the left-hand lateral routing.
+        \path ($(in.east)+(14mm,0)$);
+    \end{tikzpicture}
+    \caption[Shared segmentation architecture]{The architecture shared by
+    every trained model: an encoder, a four-level pyramid, and a UPerNet
+    decoder combining pyramid pooling~\cite{pspnet2017} for global context with
+    top-down FPN fusion for spatial detail.}
+    \label{fig:arch}
+\end{figure}
+
+
+The Hiera variants~\cite{hiera2023} needed one fix to run at native
+resolution. Hiera combines an interpolated global positional embedding with a
+windowed embedding tiled by exact integer repetition. Training at $1024^2$
+gives a $256 \times 256$ feature map, an exact multiple of the window size, so
+the code worked; \SI{4}{K} input gives $960 \times 540$, and $540/8 = 67.5$ is
+not integral, so it failed unconditionally. Replacing the exact tile with a
+ceiling-tile-then-crop reproduces the old output wherever it was defined, so no
+retraining was needed.
+
+One training recipe serves every backbone, varying only batch size with memory
+footprint (Table~\ref{tab:trainhp}). Random scale augmentation matters here
+because UAVid is captured at roughly constant altitude and so contains little
+natural scale variation.
+
+\begin{table}[t]
+    \centering
+    \caption[Training hyper-parameters]{Training configuration, shared by every
+    backbone except for batch size, which follows each model's memory
+    footprint.}
+    \label{tab:trainhp}
+    \footnotesize
+    \begin{tabular}{@{}ll@{}}
+        \toprule
+        \textbf{Setting} & \textbf{Value} \\
+        \midrule
+        Optimiser        & AdamW~\cite{adamw2019}, lr $10^{-4}$,
+                           weight decay 0.05 \\
+        Schedule         & cosine, with 2-epoch linear warmup \\
+        Stopping         & early stop on a validation-mIoU plateau \\
+        Input            & $1024^2$ random crops, \texttt{bfloat16} AMP \\
+        Loss             & cross-entropy, ignoring class 255 \\
+        Augmentation     & horizontal flip; random scale $0.75$ to $1.4$;
+                           brightness \\
+                         & and contrast; hue and saturation \\
+        Batch size       & 8 (ConvNeXt-Large), 4 (Swin-Large and Hiera-Base+) \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\section{Optical Flow Backends}
+\label{sec:flowbackends}
+
+Both backends satisfy one interface: estimate flow for a pair, for a batch of
+pairs, or for a batch returning a GPU-resident tensor, the last of which lets
+the pipeline warp and score without a host round trip. Flow is returned in
+pixels (Figure~\ref{fig:flowvec}).
+
+\begin{figure}[t]
+    \centering
+    % Frame captions sit above the boxes and every correspondence arc is routed
+    % below them. Arc labels carry an opaque background, so a label stays
+    % legible even where an arc passes behind it.
+    \begin{subfigure}[b]{0.48\textwidth}
+        \centering
+        \begin{tikzpicture}[scale=0.82,
+                            arclbl/.style={lbl, fill=white, inner sep=1.6pt}]
+            \draw[draw=cMuted, fill=cLight] (0,0) rectangle (2.4,1.4);
+            \node[lbl, above] at (1.2,1.4) {source frame $t$};
+            \draw[draw=cMuted, fill=cLight] (3.4,0) rectangle (5.8,1.4);
+            \node[lbl, above] at (4.6,1.4) {target frame $t{+}1$};
+            \fill[cModel] (1.50,0.75) circle (1.7pt);
+            \node[lbl, above=0.3mm] at (1.50,0.77) {$q$};
+            \fill[cFlow] (4.45,0.75) circle (1.7pt);
+            \node[lbl, above=0.3mm] at (4.45,0.77) {$p$};
+            \draw[-{Latex[length=1.7mm,width=1.4mm]}, cFlow, line width=0.8pt]
+                (4.45,0.63) .. controls (4.1,-0.75) and (1.85,-0.75) .. (1.50,0.63);
+            \node[arclbl, text=cFlow!70!black] at (2.98,-0.78)
+                {$\mathbf{f}_{\text{bwd}}(p)$: where did $p$ come from?};
+            % Match panel (b)'s depth so bottom alignment puts both frame
+            % rows at the same height.
+            \path (0,-1.45);
+        \end{tikzpicture}
+        \caption{backward warp: one source per target pixel}
+    \end{subfigure}\hfill
+    \begin{subfigure}[b]{0.48\textwidth}
+        \centering
+        \begin{tikzpicture}[scale=0.82,
+                            arclbl/.style={lbl, fill=white, inner sep=1.6pt}]
+            \draw[draw=cMuted, fill=cLight] (0,0) rectangle (2.4,1.4);
+            \node[lbl, above] at (1.2,1.4) {source frame $t$};
+            \draw[draw=cMuted, fill=cLight] (3.4,0) rectangle (5.8,1.4);
+            \node[lbl, above] at (4.6,1.4) {target frame $t{+}1$};
+            \fill[cModel] (1.50,0.75) circle (1.7pt);
+            \node[lbl, above=0.3mm] at (1.50,0.77) {$q$};
+            \fill[cFlow] (4.22,0.72) circle (1.7pt);
+            \node[lbl, left=0.5mm] at (4.22,0.72) {$p$};
+            \fill[cAccent] (4.98,0.98) circle (1.7pt);
+            \node[lbl, right=0.5mm] at (4.98,0.98) {$r$};
+            % step 1, a shallow arc below the frames
+            \draw[-{Latex[length=1.7mm,width=1.4mm]}, cFlow, line width=0.8pt]
+                (4.22,0.60) .. controls (3.9,-0.50) and (1.85,-0.50) .. (1.50,0.63);
+            % step 2, a deeper arc so the two never touch
+            \draw[-{Latex[length=1.7mm,width=1.4mm]}, cModel, line width=0.8pt]
+                (1.50,0.57) .. controls (2.0,-1.50) and (4.9,-1.50) .. (4.98,0.86);
+            % step 3, the residual, inside the target frame
+            \draw[{Latex[length=1.3mm]}-{Latex[length=1.3mm]}, cAccent,
+                  line width=1pt] (4.29,0.77) -- (4.91,0.93);
+            \node[lbl, text=cAccent] at (4.52,1.18) {3.\ $\epsilon$};
+            % Labels last, so their opaque backgrounds sit over the arcs.
+            \node[arclbl, text=cFlow!70!black] at (2.87,-0.52)
+                {1.\ $\mathbf{f}_{\text{bwd}}(p)$};
+            \node[arclbl, text=cModel] at (3.40,-1.24)
+                {2.\ $\mathbf{f}_{\text{fwd}}(q)$};
+        \end{tikzpicture}
+        \caption{FB check: valid iff $\epsilon < \SI{1.5}{px}$}
+    \end{subfigure}
+    \caption[Backward warp and forward-backward consistency]{The two
+    propagation primitives. (a) Backward flow at target pixel $p$ names its
+    source $q$, whose label is copied to $p$ by nearest-neighbour sampling.
+    (b) A round trip through both flow directions returns to $r$; the distance
+    $\epsilon$ from the original $p$ is the consistency error of
+    Equation~\ref{eq:fb}.}
+    \label{fig:warpfb}
+\end{figure}
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=0.92\linewidth]{fig_deck_flowvectors.jpg}
+    \caption[Estimated flow on a UAVid frame pair]{SEA-RAFT flow on the
+    fastest-motion pair of a UAVid sequence, subsampled to one arrow per grid
+    cell. Each arrow is the estimated displacement into the next frame, and
+    labels are propagated along these vectors. The field is dominated by camera
+    motion; the disagreement remaining at object boundaries is what the
+    forward-backward check is meant to catch.}
+    \label{fig:flowvec}
+\end{figure}
+
+SEA-RAFT~\cite{searaft2024} follows the RAFT recipe (Figure~\ref{fig:raft}):
+encode features at $1/8$ resolution, build an all-pairs correlation volume,
+regress an initial flow field, refine it for a fixed number of recurrent
+iterations that look up the volume at the current estimate, then convex
+upsample to full resolution. The configuration used is the \texttt{spring-L}
+checkpoint with 12 refinement iterations, a ResNet-34 feature encoder,
+correlation radius 4 and feature dimension 128.
+
+\begin{figure}[t]
+    \centering
+    \begin{tikzpicture}
+        % Border-relative spacing: a fixed 7mm of visible arrow between boxes.
+        \node[plainblk, text width=56mm] (im) at (0,0) {$I_1, I_2$};
+        \node[flowblk,  text width=56mm, below=7mm of im] (feat)
+            {feature encoder, ResNet-FPN,\\at $1/8$ resolution};
+        \node[flowblk,  text width=56mm, below=7mm of feat] (corr)
+            {\textbf{all-pairs correlation volume}\\size $(H/8 \cdot W/8)^2$};
+        \node[flowblk,  text width=56mm, below=7mm of corr] (gru)
+            {regress an initial flow, then refine it:\\
+             the GRU looks up the correlation};
+        \node[gate, text width=15mm, below=8mm of gru] (done) {12 iters?};
+        \node[flowblk,  text width=56mm, below=8mm of done] (out)
+            {convex upsample ${\times}8$, giving the\\
+             flow field $(H, W, 2)$ in pixels};
+
+        \draw[fl] (im)   -- (feat);
+        \draw[fl] (feat) -- (corr);
+        \draw[fl] (corr) -- (gru);
+        \draw[fl] (gru)  -- (done);
+        \draw[fl] (done) -- node[lbl, right, pos=0.5] {yes} (out);
+
+        % Refinement loop, routed up the right margin. Both ends share one
+        % channel x, or the run is diagonal: the diamond is much narrower than
+        % the block it returns to.
+        \coordinate (loopx) at ($(gru.east)+(12mm,0)$);
+        \draw[fl] (done.east) -- (loopx |- done.east)
+                  -- (loopx |- gru.east) -- (gru.east);
+        \node[lbl, anchor=west]
+            at ($(loopx |- gru.east)!0.5!(loopx |- done.east)+(1.5mm,0)$) {no};
+
+        \node[lbl, anchor=west, text width=30mm, align=left, text=cAccent]
+            at ($(corr.east)+(3mm,0)$)
+            {grows quadratically\\with resolution:\\the cost driver};
+        % Balance the bounding box against the right-hand annotation.
+        \path ($(im.west)-(34mm,0)$);
+    \end{tikzpicture}
+    \caption[SEA-RAFT iterative refinement]{SEA-RAFT's refinement
+    loop~\cite{searaft2024,raft2020}. The correlation volume grows
+    quadratically with resolution, so the internal working resolution is the
+    dominant cost setting at \SI{4}{K}.}
+    \label{fig:raft}
+\end{figure}
+
+The correlation volume dominates cost. For a frame of height $H$ and width
+$W$ its size grows as $(H/8 \cdot W/8)^2$, so at \SI{4}{K} a single pair needs
+roughly
+\SI{20}{GB}, even though SEA-RAFT has far fewer \emph{parameters} than the
+segmentation model. Parameter count is a poor proxy for cost here.
+
+The remedy is a \texttt{scale} parameter, which runs the network at a lower
+internal resolution and rescales the output vectors back to full-resolution
+pixels. This project uses quarter resolution, \texttt{scale}${=}{-}2$. Flow
+time falls by more than a factor of three, and a hard cuDNN limit that aborts
+full-resolution batches whatever the free memory is avoided. The flow is still
+returned at full input resolution, so mask resolution is unaffected, and
+Section~\ref{sec:backends} measures the accuracy cost at under \num{0.01}
+mIoU.
+
+FlowNet2~\cite{flownet2_2017} is retained for comparison because SegProp uses
+it. It is a single-pass cascade with no iterative refinement and no equivalent
+resolution control, and it needs custom CUDA operators to run at all, which is
+part of why SEA-RAFT is the default.
+
+\section{Propagation Primitives}
+\label{sec:primitives}
+
+Three operations, applied to whole GPU-resident batches so that no per-frame
+work returns to the host.
+
+\subsection{Backward Warp}
+\label{sec:warp}
+
+To label target frame $t{+}1$ from a mask at $t$, the required flow is
+\emph{backward}, from target to source. For each target pixel $(x, y)$,
+$\mathbf{f}_{\text{bwd}}(x,y) = (u, v)$ says the content came from
+$(x{+}u,\, y{+}v)$ in the source, so the target label is read from the source
+mask at that location (Figure~\ref{fig:warpfb}a). Sampling is
+\textbf{nearest-neighbour} rather than bilinear, since labels are categorical
+and interpolating class 2 with class 5 yields either a meaningless value or a
+valid but wrong class. Target pixels whose source falls outside the frame
+become \texttt{ignore}. Backward warping is preferred to forward splatting
+because it gives every target pixel exactly one source, leaving no holes and no
+collisions.
+
+\subsection{Forward-Backward Consistency}
+\label{sec:fb}
+
+Warped labels inherit the flow's errors. The forward-backward
+check~\cite{sundaram2010,brox2004} detects unreliable correspondences by round
+trip (Figure~\ref{fig:warpfb}b): step from target pixel $p$ to its claimed
+source $q$ along backward flow, step from $q$ along forward flow sampled
+bilinearly at that sub-pixel location, and measure the distance from $p$:
+%
+\begin{equation}
+    \epsilon(p) = \bigl\lVert \mathbf{f}_{\text{bwd}}(p) + \mathbf{f}_{\text{fwd}}\bigl(p + \mathbf{f}_{\text{bwd}}(p)\bigr) \bigr\rVert_2 .
+    \label{eq:fb}
+\end{equation}
+%
+A pixel is valid when $\epsilon(p) < \theta$ and its source stayed in bounds,
+with $\theta = \SI{1.5}{px}$ throughout.
+
+\paragraph{What the check cannot see.} It tests whether the two flow fields
+agree geometrically. It is blind to the nearest-neighbour rounding introduced
+at every warp step, which accumulates at object boundaries while flow stays
+self-consistent. This is why a frame can report high coverage and still carry
+degraded labels on small moving objects (Section~\ref{sec:whereloss}).
+
+\subsection{Coverage Accumulation}
+\label{sec:coverage}
+
+The check in Section~\ref{sec:fb} grades one warp. For the step from frame
+$t$ to frame $t{+}1$ it marks every pixel true or false; call that map
+$S_{t+1}$. On its own it says nothing about history: a pixel can pass this
+step even though it was warped badly three frames ago, because the labels it
+carries came from there.
+
+The pipeline therefore keeps a second map, $V_t$, recording which pixels of
+frame $t$ have passed \emph{every} step since the last model call. It is set
+all-true immediately after inference. Updating it takes two operations. Since
+$V_t$ is expressed in frame $t$'s pixel grid, it is first warped into frame
+$t{+}1$ with the same backward flow used for the labels, then combined with
+the new step's map by a per-pixel AND:
+%
+\begin{equation}
+    V_{t+1} = \mathrm{warp}(V_t) \wedge S_{t+1},
+    \qquad
+    \gamma_{t+1} = \frac{1}{HW}\sum V_{t+1} .
+    \label{eq:coverage}
+\end{equation}
+%
+Coverage $\gamma_{t+1}$ is the fraction of the frame's $HW$ pixels that are
+still true, and that single number is what the controller compares against
+$\tau$. A pixel marked false can never become true again, so $\gamma$ only
+falls while labels are propagated, and returns to 1 at the next model call.
+
+\section{The Adaptive Algorithm and Implementation}
+\label{sec:algorithm}
+
+Algorithm~\ref{alg:adaptive} states the policy. Flow is computed for the whole
+chunk at line~\ref{line:flowchunk}, before the threshold test at
+line~\ref{line:gate}, so every frame pays for flow whether or not the model
+then runs.
+
+\begin{algorithm}[t]
+    \caption{Adaptive hybrid inference}
+    \label{alg:adaptive}
+    \SetKwInOut{Input}{input}
+    \SetKwInOut{Output}{output}
+    \Input{frames $I_0..I_T$; model $f$; flow model $g$; threshold $\tau$; chunk size $K$}
+    \Output{a dense mask $M_t$ for every frame}
+    $M_0 \leftarrow f(I_0)$;\quad $V_0 \leftarrow \mathbf{1}$;\quad emit $(M_0, \text{``model''}, \gamma{=}1)$\;
+    $s \leftarrow 0$\;
+    \While{$s < T$}{
+        $E \leftarrow \min(s+K,\, T)$\;
+        $\{\mathbf{f}^{\text{fwd}}_i\}, \{\mathbf{f}^{\text{bwd}}_i\} \leftarrow g\bigl(\{(I_i, I_{i+1})\}_{i=s}^{E-1}\bigr)$ \tcp*{one batched launch}
+        \label{line:flowchunk}
+        \For{$i \leftarrow s$ \KwTo $E-1$}{
+            $M' \leftarrow \mathrm{warp}(M_i,\, \mathbf{f}^{\text{bwd}}_i)$ \tcp*{nearest neighbour}
+            $S \leftarrow \mathrm{fbcheck}(\mathbf{f}^{\text{fwd}}_i,\, \mathbf{f}^{\text{bwd}}_i,\, \theta)$\;
+            $V' \leftarrow \mathrm{warp}(V_i,\, \mathbf{f}^{\text{bwd}}_i) \wedge S$;\quad
+            $\gamma \leftarrow \mathrm{mean}(V')$\;
+            \uIf{$\gamma \le \tau$}{ \label{line:gate}
+                $M_{i+1} \leftarrow f(I_{i+1})$;\quad $V_{i+1} \leftarrow \mathbf{1}$\;
+                emit $(M_{i+1}, \text{``model''}, \gamma{=}1)$\;
+            }
+            \Else{
+                $M_{i+1} \leftarrow M'$;\quad $V_{i+1} \leftarrow V'$\;
+                emit $(M_{i+1}, \text{``flow''}, \gamma)$\;
+            }
+        }
+        discard chunk flow;\quad $s \leftarrow E$\;
+    }
+\end{algorithm}
+
+Flow cannot be computed up front: the forward and backward fields for a
+900-frame \SI{4}{K} video would occupy about \SI{120}{GB}. The pipeline
+therefore streams, computing flow in windows of $K = 16$ steps and discarding
+each window once its frames are labelled, so memory stays flat however long
+the video is. Larger windows proved unreliable once a segmentation model
+shared the GPU.
+
+\end{document}

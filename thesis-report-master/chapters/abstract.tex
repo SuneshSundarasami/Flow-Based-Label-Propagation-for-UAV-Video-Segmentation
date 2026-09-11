@@ -1,0 +1,32 @@
+%!TEX root = ../report.tex
+\documentclass[report.tex]{subfiles}
+\begin{document}
+
+\begin{abstract}
+Segmenting every frame of a UAV video with a per-frame model is expensive: the
+strongest model trained here costs \LatTypical~ms per \SI{4}{K} frame, so a
+\SI{45}{s} clip at \SI{20}{FPS} takes \ClipMinutes~minutes of GPU time.
+Consecutive frames are almost identical, so most of that computation repeats
+work already done.
+
+This report evaluates an \emph{adaptive hybrid} alternative: segment one frame
+with a model, propagate the mask to later frames by warping it along optical
+flow, and re-run the model only when the propagated mask becomes unreliable.
+Reliability is measured by a forward-backward consistency check, accumulated
+across steps into a per-frame \emph{coverage} value; the model is re-invoked
+when coverage falls to a threshold $\tau$, which resets coverage. Components
+were selected by measurement: of the backbones trained behind one UPerNet
+decoder, ConvNeXt-Large is strongest at \MIoUConvnextLarge{} mIoU, and SEA-RAFT
+propagates as accurately as FlowNet2 at $3.6\times$ the speed.
+
+On all \NumSeq{} UAVid validation sequences (\NumFrames{} frames), the pipeline
+is \Speedup$\times$ faster than a model-every-frame baseline, retains
+\Retention\% of its mIoU, and calls the model on \PctModel\% of frames under
+one fixed threshold. Because flow is computed for every consecutive pair before
+the threshold can be tested, flow is the fixed cost and model inference the
+marginal one, so $\tau$ controls quality much more than speed. The residual
+loss concentrates on small moving objects, where motion breaks the consistency
+check.
+\end{abstract}
+
+\end{document}

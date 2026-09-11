@@ -1,0 +1,124 @@
+%!TEX root = ../report.tex
+\documentclass[report.tex]{subfiles}
+\begin{document}
+
+\chapter{Methodology}
+\label{ch:methodology}
+
+\section{Datasets and Label Scheme}
+\label{sec:data}
+
+All adaptive-inference experiments use the UAVid v1.5
+release~\cite{uavid2020}, whose properties are listed in
+Table~\ref{tab:uavid}. Ruralscapes is used only for the flow-backend
+comparison of Section~\ref{sec:backends}.
+
+\begin{table}[t]
+    \centering
+    \caption[UAVid properties as verified on disk]{UAVid v1.5 properties,
+    verified from the release on disk by file inspection.}
+    \label{tab:uavid}
+    \footnotesize
+    \begin{tabular}{@{}ll@{}}
+        \toprule
+        \textbf{Property} & \textbf{Value} \\
+        \midrule
+        Sequences                & 42 (20 train / 7 validation / 15 test) \\
+        Frames per sequence      & 901, exactly \\
+        Frame rate               & \SI{20}{FPS}, exactly \\
+        Native resolution        & $3840 \times 2160$ (\SI{4}{K}) \\
+        Densely labelled frames  & ten per sequence, one every 100 frames \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+Training uses the ten labelled keyframes of each of the 20 training sequences,
+200 images. The adaptive pipeline decodes each full video sequentially and is
+scored wherever a labelled frame exists.
+
+\label{sec:labels}
+UAVid's colour-coded label images are decoded to six classes plus an ignore
+class (Table~\ref{tab:classes}). Two consequences matter downstream: moving
+and static cars are \emph{merged} into one \texttt{vehicle} class, and
+background becomes \texttt{ignore}, excluded from the loss and from every mIoU
+reported here.
+
+\begin{table}[t]
+    \centering
+    \caption[The six-class label scheme]{The six-class scheme used throughout.}
+    \label{tab:classes}
+    \footnotesize
+    \begin{tabular}{@{}rll@{}}
+        \toprule
+        \textbf{Id} & \textbf{Class} & \textbf{Note} \\
+        \midrule
+        0   & road       & \\
+        1   & vegetation & low vegetation \\
+        2   & tree       & \\
+        3   & person     & smallest, rarest object \\
+        4   & vehicle    & moving and static car, merged \\
+        5   & building   & \\
+        255 & ignore     & excluded from loss and mIoU \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\section{Quality Metric}
+\label{sec:metric}
+
+Quality is mean intersection-over-union, from a confusion matrix accumulated
+over all non-ignored pixels:
+%
+\begin{equation}
+    \mathrm{IoU}_c = \frac{\mathrm{TP}_c}{\mathrm{TP}_c + \mathrm{FP}_c + \mathrm{FN}_c},
+    \qquad
+    \mathrm{mIoU} = \frac{1}{|\mathcal{C}_{\text{gt}}|} \sum_{c \in \mathcal{C}_{\text{gt}}} \mathrm{IoU}_c ,
+\end{equation}
+%
+where $\mathcal{C}_{\text{gt}}$ is the set of classes present in that frame's
+ground truth.
+
+\paragraph{Equal class weighting.} The mean is unweighted, so a class
+occupying a few hundred pixels counts as much as one occupying a million.
+\texttt{person} regions in UAVid are small, so a few misassigned boundary
+pixels cost a large \emph{fraction} of that class's IoU and move the aggregate
+mIoU as much as a far larger error on \texttt{building} would. This explains
+most of the degradation pattern of Section~\ref{sec:whereloss}.
+
+\paragraph{Two masking modes.} mIoU is computed over two different sets of
+pixels. The \emph{all-pixel} figure scores every pixel that is not
+\texttt{ignore}. The \emph{valid-only} figure also leaves out the pixels the
+forward-backward check has rejected, so it measures the warp only where flow
+is trustworthy. Every hybrid-against-baseline comparison uses the all-pixel
+figure, so both methods are judged on exactly the same pixels; valid-only
+numbers appear only in the flow-backend comparison.
+
+\paragraph{One caveat across chapters.} Training-time validation mIoU
+(Table~\ref{tab:backbones}) is computed on a $1024^2$ \emph{centre crop}, the
+training pipeline's validation transform, whereas the pipeline experiments
+score full-resolution frames. The two are not the same measurement, and the gap
+between ConvNeXt-Large's \MIoUConvnextLarge{} and the pipeline baseline's
+\BaseMIoU{} is mostly that difference rather than a degraded baseline.
+
+\section{Timing and Experimental Design}
+\label{sec:timing}
+
+Every timing is wall-clock and is taken with the GPU synchronised, so no work
+can hide behind an asynchronous kernel launch. Each frame is charged what the
+pipeline spends on it: model time on a model frame, and flow, warp and
+consistency-check time on a propagated one. Baseline and hybrid run over the
+same video on the same device, so the comparison is paired.
+
+All experiments ran on a single NVIDIA A100 \SI{80}{GB} under PyTorch 2.6
+with CUDA 12.4, in \texttt{bfloat16} at native resolution, with the SEA-RAFT
+\texttt{spring-L} checkpoint at 12 refinement iterations.
+
+Four experiments follow: the backbone comparison
+(Section~\ref{sec:backbones}), the flow-backend comparison
+(Section~\ref{sec:backends}), a sweep of $\tau$ over
+$\{0.75, 0.90, 0.95, 1.00\}$ (Section~\ref{sec:sweep}), and the full
+validation split at $\tau = 0.95$ (Section~\ref{sec:valresults}). Quality is
+measured at the \NumGT{} dense frames and timing over all \NumFrames{};
+Section~\ref{sec:threats} states the limits of this protocol.
+
+\end{document}

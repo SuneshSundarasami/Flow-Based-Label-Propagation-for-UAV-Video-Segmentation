@@ -1,0 +1,83 @@
+%!TEX root = ../report.tex
+\documentclass[report.tex]{subfiles}
+\begin{document}
+
+\chapter{Conclusions}
+\label{ch:conclusion}
+
+\section{Contributions}
+\label{sec:conclusions}
+
+Temporal redundancy in UAV video is large enough to label every frame without
+running a segmentation model on every frame. Across the UAVid validation split
+the adaptive hybrid pipeline is \Speedup$\times$ faster than model-every-frame
+inference, retains \Retention\% of the baseline mIoU and calls the model on
+\PctModel\% of frames, with per-sequence speedups between $1.30\times$ and
+$1.86\times$.
+
+A single fixed threshold serves all seven sequences. The most dynamic, seq20,
+triggers 474 model calls and the calm seq37 only 87, so inference follows
+motion without per-sequence tuning, and the cost of motion is paid in speed
+rather than accuracy: seq20 falls to $1.30\times$ while its quality stays in
+line with the rest of the split.
+
+What the threshold buys is quality, not speed. Flow is computed for every
+consecutive pair before the staleness decision, which makes flow the fixed
+cost and the model call the marginal one. Cutting model calls from 901 to 71
+removes \SI{92}{\percent} of the inference work yet yields only $1.9\times$,
+and going down to five calls buys almost no further speed while costing
+\num{0.20} mIoU.
+
+The components were chosen by measurement. SEA-RAFT is $3.6\times$ faster per
+pair than FlowNet2 for a difference in propagation accuracy of \num{0.0006}
+mIoU, and running its correlation at quarter resolution is the largest single
+speed gain in the flow path, at a cost below \num{0.01} mIoU. Chunked
+streaming flow keeps peak GPU memory flat regardless of video length, against
+roughly \SI{120}{GB} for naive precomputation, and backbones and flow backends
+remain interchangeable behind one configuration file.
+
+The residual loss concentrates on small moving objects, principally
+\texttt{person} and \texttt{vehicle}: equal class weighting amplifies small
+regions, nearest-neighbour warping erodes their boundaries at every step, and
+independent object motion is where correspondence, and therefore the
+consistency check, is least reliable.
+
+\section{Lessons Learned}
+\label{sec:lessons}
+
+\paragraph{Measure the fixed cost, not the conditional one.} Framing the work
+as reducing model calls measures the wrong variable: model calls fell by
+\SI{92}{\percent} but runtime only by half, because flow is paid regardless.
+Parameter count was likewise a poor proxy for cost, since SEA-RAFT has far
+fewer parameters than the segmentation model yet needs roughly \SI{20}{GB} for
+one native-resolution \SI{4}{K} correlation volume.
+
+\paragraph{A confidence signal is not a quality signal.} The forward-backward
+check tests whether two flow fields agree geometrically. It is blind to the
+nearest-neighbour rounding that accumulates at label boundaries while flow
+stays self-consistent, which is why a frame can report high coverage and still
+show degraded small objects.
+
+\section{Future Work}
+\label{sec:future}
+
+\begin{itemize}
+    \item \textbf{Predict staleness without computing flow.} Flow is the fixed
+          cost and is computed partly to decide whether to re-infer, so a cheap
+          predictor from frame differences, IMU data or a low-resolution proxy
+          would take flow off the decision path. This is the only route that
+          attacks the cost bounding the system.
+    \item \textbf{Overlap flow and inference on separate CUDA streams.} The
+          pipeline runs them serially, yet a model call and the next chunk's
+          flow are independent, so concurrent execution would raise throughput
+          beyond what fewer model calls can reach.
+    \item \textbf{Evaluate a smaller segmentation model} such as Hiera-Small.
+          The achievable speedup depends on the ratio of model cost to flow
+          cost, so a cheaper backbone changes the economics of the approach.
+    \item \textbf{Cross-dataset evaluation.} Ruralscapes would test the method
+          under altitude and parallax variation UAVid does not contain, and
+          would allow the backend comparison to be re-run in the
+          consecutive-frame regime the pipeline uses.
+\end{itemize}
+
+\end{document}

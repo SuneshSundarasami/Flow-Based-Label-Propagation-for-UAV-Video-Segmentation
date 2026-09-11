@@ -1,0 +1,116 @@
+%!TEX root = ../report.tex
+\documentclass[report.tex]{subfiles}
+\begin{document}
+
+\chapter{Introduction}
+\label{ch:intro}
+
+\section{Motivation}
+\label{sec:motivation}
+
+A drone that has to act on what it sees needs a semantic label for every frame
+it captures. Obstacle avoidance, landing-site selection and terrain following
+all read from a dense map of the scene, and they read from it while the
+aircraft is still moving.
+
+Producing that map one frame at a time is expensive. The strongest
+segmentation model trained for this project takes about \LatTypical~ms on a
+native \SI{4}{K} frame, so labelling a \SI{45}{s} clip costs
+\ClipMinutes~minutes of GPU time, roughly \RealtimeFactor$\times$ longer than
+the flight it describes, and on an NVIDIA A100 rather than on anything a
+drone could carry. Chapter~\ref{ch:results} reports the model and the
+measurement in full.
+
+Much of that work is also repeated. At \SI{20}{FPS} consecutive frames differ
+by a few tens of pixels of apparent motion, so the network recomputes almost
+the same mask twenty times a second. If the mask from one frame could be
+carried forward to the next, the model would need to run only when carrying it
+forward stops working.
+
+That is the system evaluated here: segment one frame, move its mask onto the
+frames that follow along optical flow, and re-run the model only when the moved
+mask can no longer be trusted. Optical flow supplies the correspondence, since
+a flow field states where each pixel went and a label attached to that pixel
+can travel with it, and learned estimators such as RAFT~\cite{raft2020} and
+SEA-RAFT~\cite{searaft2024} are accurate enough for this to be done directly.
+The experiments use UAVid~\cite{uavid2020}, an urban-drone benchmark of
+oblique, low-altitude video.
+
+Carrying labels along flow is not itself new; what differs here is where the
+first mask comes from. SegProp~\cite{segprop2020} and the video propagation of
+Zhu et~al.~\cite{zhu2019} propagate \emph{human-drawn} annotations offline, to
+grow a training set from a few labelled frames. In flight there is no
+annotation to propagate, so the mask must be a model prediction produced on
+the fly. That makes producing it the cost worth avoiding, and it forces the
+system to judge for itself when the propagated mask has decayed enough to be
+worth replacing.
+
+\section{Challenges}
+\label{sec:challenges}
+
+\paragraph{Flow is the fixed cost.} RAFT-family
+models~\cite{raft2020,searaft2024} build an all-pairs correlation volume whose
+size grows \emph{quadratically} with resolution, so at \SI{4}{K} their memory
+is dominated by that activation rather than by weights. More importantly, flow
+must be computed for every consecutive pair before the staleness test can be
+evaluated, so it is paid whether the model runs or not. This bounds the
+achievable speedup.
+
+\paragraph{Detecting bad flow is harder than computing it.} Flow fails at
+occlusion boundaries, on fast-moving objects and under parallax, and the
+propagated label is then wrong. The standard detector is the forward-backward
+consistency check~\cite{sundaram2010}, which rejects a pixel whose round trip
+through both flow directions does not return to its origin. It tests whether
+the two flow fields \emph{agree}, not whether the label is \emph{correct}.
+
+\paragraph{Ground truth is sparse.} UAVid labels one frame in a
+hundred~\cite{uavid2020}, so every quality figure here rests on \NumGT{}
+evaluation points across \NumSeq{} sequences: enough for a paired comparison of
+two methods on identical frames, not enough to characterise the distribution of
+propagation quality.
+
+\section{Problem Statement}
+\label{sec:problem}
+
+Given a UAV video $\{I_0, \dots, I_{T}\}$, a segmentation model $f$ costing
+$t_{\text{model}}$ per frame and a flow model costing $t_{\text{flow}}$ per
+frame pair, produce a dense mask for \emph{every} frame in less than
+$T \cdot t_{\text{model}}$ wall-clock time, with mean quality as close as
+possible to running $f$ on every frame.
+
+The policy evaluated is: run $f$ on frame $0$; propagate its output along flow;
+maintain a cumulative estimate $\gamma$ of the fraction of the frame still
+trustworthy; and re-invoke $f$ when $\gamma$ falls to a threshold $\tau$. Three
+questions are asked of it: how much time it saves, how much quality that costs,
+and what $\tau$ controls.
+
+\section{Contributions and Scope}
+\label{sec:contributions}
+
+\begin{enumerate}
+    \item \textbf{An adaptive hybrid inference pipeline} that propagates model
+          predictions along SEA-RAFT flow and re-invokes the model on a
+          forward-backward coverage trigger, running \Speedup$\times$ faster
+          than model-every-frame inference at \Retention\% of its mIoU on the
+          UAVid validation split (Section~\ref{sec:valresults}).
+    \item \textbf{A component study} selecting the segmentation backbone
+          (Section~\ref{sec:backbones}) and the flow backend
+          (Section~\ref{sec:backends}) by measurement.
+    \item \textbf{A characterisation of the coverage threshold} as a quality
+          control rather than a speed control, which follows from flow being
+          the fixed cost (Section~\ref{sec:sweep}).
+    \item \textbf{A reproducible implementation} with interchangeable backbones
+          and flow backends, chunked streaming flow that keeps peak memory flat
+          regardless of video length, and a resolution setting that makes
+          \SI{4}{K} flow tractable (Chapter~\ref{ch:solution}).
+\end{enumerate}
+
+The scope is narrow. Evaluation uses the UAVid validation split only, since the
+test labels are withheld~\cite{uavid2020}; the flow-backend comparison uses
+Ruralscapes for the reason given in Section~\ref{sec:backends}. Each backbone
+was trained once with one seed, so backbone differences support a ranking and
+not a significance claim. Propagated masks are used unrefined, and there is no
+deployment engineering: no quantisation, distillation or TensorRT export, and
+all timings come from one A100 under bf16 PyTorch.
+
+\end{document}
